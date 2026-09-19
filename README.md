@@ -15,9 +15,20 @@ Scaffolded and running against mocks — not yet wired to real glasses hardware 
 1. **Voice trigger.** The real trigger for both features is "Hey Brownmellon, scan this" / "...read this to me" — but that keyword-routing infrastructure is Workstream A's, and doesn't exist yet. Both screens use a manual button tap instead (`AppointmentCardScanView` / `ReadToMeView`). When A's keyword router lands, wire it to call `AppointmentCardScanViewModel.scan()` / `ReadToMeViewModel.readThisToMe()` directly — they're already designed as the integration seam.
 2. **Camera + speech.** `MockGlassesSession` (`ios/Brownmellon/Core/Mocks/`) uses the system photo picker to stand in for the glasses camera (pick any photo of an appointment card or document) and real on-device text-to-speech (`AVSpeechSynthesizer`) to stand in for the glasses speaker — so the feature is genuinely testable, and audible, on Simulator with zero hardware. Swap for the real `GlassesSession` (DAT-backed) once that shared-foundation piece lands.
 
-Calendar writes go through `MockCalendarService` (in-memory, resets on relaunch) until the real Google Calendar-backed `CalendarService` lands — whichever of Workstream A or B needs it first should build it for real (see PRD § Foundation).
+Calendar writes go through `MockCalendarService` (in-memory, resets on relaunch) by default. `GoogleCalendarService.swift` is written (real Calendar API v3 calls — create + list events, via `GoogleSignIn-iOS`) but **not wired up or usable yet**: it needs a Google Cloud OAuth client ID that doesn't exist yet (one-time setup, PRD § Deployment), and its `GIDSignIn` call signatures haven't been checked against the actually-resolved SDK version (written from general knowledge, no way to verify without Xcode). Whoever sets up the Google Cloud project should pick this up, verify it against the real SDK, and swap it in for the mock in `BrownmellonApp.swift`.
 
-## Running the backend
+## Backend is deployed
+
+Production: **https://backend-five-dusky-36.vercel.app** (also connected to this GitHub repo — pushes to `main` will auto-deploy). The iOS app defaults to this URL (`BROWNMELLON_BACKEND_URL` in `project.yml`) since a physical device can't reach `localhost`.
+
+**Still needed for it to actually work:** set `ANTHROPIC_API_KEY` on the Vercel project. Run this yourself rather than pasting the key into chat:
+```bash
+cd backend
+vercel env add ANTHROPIC_API_KEY production
+vercel --prod   # redeploy to pick it up
+```
+
+## Running the backend locally
 
 ```bash
 cd backend
@@ -45,6 +56,4 @@ xcodegen generate
 open Brownmellon.xcodeproj
 ```
 
-Run on Simulator. `AppointmentCardScanView` / `ReadToMeView` will prompt the photo picker in place of the glasses camera.
-
-To point the app at a deployed (not local) backend, add a `BROWNMELLON_BACKEND_URL` key to `Info.plist` (see `VisionBackendClient.baseURL`).
+Run on Simulator or a physical device. `AppointmentCardScanView` / `ReadToMeView` will prompt the photo picker in place of the glasses camera. Talks to the deployed backend by default — see `VisionBackendClient.baseURL` / `project.yml`'s `BROWNMELLON_BACKEND_URL` to point at `vercel dev` locally instead.

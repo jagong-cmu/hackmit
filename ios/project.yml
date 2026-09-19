@@ -11,12 +11,20 @@ settings:
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
 
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 7.1.0
+
 targets:
   Brownmellon:
     type: application
     platform: iOS
     sources:
       - path: Brownmellon
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
     info:
       path: Brownmellon/Info.plist
       properties:
@@ -36,12 +44,16 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
 
-# Note (Workstream B): this project intentionally has NO external package
-# dependencies yet. The real Meta DAT SDK belongs to the GlassesSession
-# implementation, which is shared-foundation work (see PRD.md), not owned
-# by this workstream. Everything here is built and run against
-# MockGlassesSession / MockCalendarService until that lands and this
-# project.yml gets a `packages:` entry for it.
+# Note (Workstream B): GoogleSignIn is here because GoogleCalendarService
+# needs it (shared foundation — see PRD.md § Foundation). The real Meta
+# DAT SDK belongs to the GlassesSession implementation, also shared
+# foundation but not yet built — the app still runs against
+# MockGlassesSession until that lands and this file gets a second
+# `packages:` entry for it.
+#
+# GoogleCalendarService itself isn't usable yet either — it needs a
+# Google Cloud OAuth client ID that doesn't exist yet (PRD § Deployment).
+# MockCalendarService is still what's actually wired up in BrownmellonApp.
 #
 # Regenerate the .xcodeproj after any change to this file:
 #   cd ios && xcodegen generate
