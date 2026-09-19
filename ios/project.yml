@@ -25,6 +25,11 @@ targets:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards and read documents aloud."
         NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Brownmellon\" to respond to voice commands."
+        # Points the app at the deployed backend by default — required on a
+        # physical device, since "localhost" there means the phone itself,
+        # not your Mac. Override at build time if you're running `vercel dev`
+        # locally instead (see VisionBackendClient.baseURL / README.md).
+        BROWNMELLON_BACKEND_URL: https://backend-five-dusky-36.vercel.app
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.brownmellon.app
