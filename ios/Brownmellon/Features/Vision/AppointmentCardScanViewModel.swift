@@ -41,7 +41,7 @@ final class AppointmentCardScanViewModel: ObservableObject {
 
             guard let title = result.title,
                   let startISO = result.startISO8601,
-                  let start = ISO8601DateFormatter().date(from: startISO) else {
+                  let start = Self.parseCardDate(startISO) else {
                 pendingResult = nil
                 state = .noResult
                 await glasses.speak("I couldn't make out a date and time on that card. Want to try again, or add it by voice instead?")
@@ -66,7 +66,7 @@ final class AppointmentCardScanViewModel: ObservableObject {
               let result = pendingResult else { return }
 
         do {
-            let end: Date? = result.endISO8601.flatMap { ISO8601DateFormatter().date(from: $0) }
+            let end: Date? = result.endISO8601.flatMap(Self.parseCardDate)
             let event = try await calendar.createEvent(title: title, start: start, end: end, location: location)
             state = .saved(event)
             await glasses.speak("Done — added to your calendar.")
@@ -80,5 +80,20 @@ final class AppointmentCardScanViewModel: ObservableObject {
         pendingResult = nil
         state = .idle
         await glasses.speak("Okay, I won't add it.")
+    }
+
+    /// A paper card has no timezone, so the backend returns local wall-clock
+    /// time with no offset ("2026-10-06T14:30:00"). ISO8601DateFormatter's
+    /// default rejects that, which made every real card read as "no result".
+    /// Accept an offset if present, otherwise treat it as the phone's zone.
+    nonisolated static func parseCardDate(_ string: String) -> Date? {
+        let withOffset = ISO8601DateFormatter()
+        if let date = withOffset.date(from: string) { return date }
+
+        let local = DateFormatter()
+        local.locale = Locale(identifier: "en_US_POSIX")
+        local.timeZone = .current
+        local.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return local.date(from: string)
     }
 }

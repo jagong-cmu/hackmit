@@ -31,6 +31,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         case notRegistered
         case cameraPermissionDenied
         case noDevice
+        case noEligibleDevice(String)
         case sessionFailed(String)
         case captureTimedOut
         case photoDecodeFailed
@@ -43,6 +44,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             case .notRegistered: return "Connect the glasses in the Glasses tab first."
             case .cameraPermissionDenied: return "Camera access to the glasses was denied in Meta AI."
             case .noDevice: return "No glasses are connected. Open the hinges and check Bluetooth."
+            case .noEligibleDevice(let why): return "Glasses aren't ready for a session: \(why)"
             case .sessionFailed(let why): return "Glasses session failed: \(why)"
             case .captureTimedOut: return "The glasses didn't return a photo in time."
             case .photoDecodeFailed: return "The photo from the glasses couldn't be read."
@@ -55,9 +57,22 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
 
     // MARK: - Connection state (observed by GlassesView)
 
+    /// Per-glasses status the SDK exposes; this is what decides whether a
+    /// session can start (both must be good for AutoDeviceSelector to pick it).
+    struct DeviceStatus: Identifiable, Equatable {
+        let id: DeviceIdentifier
+        let name: String
+        let linkState: LinkState
+        let compatibility: Compatibility
+
+        var isEligible: Bool { linkState == .connected && compatibility == .compatible }
+    }
+
     @Published private(set) var registrationState: RegistrationState
     @Published private(set) var devices: [DeviceIdentifier]
+    @Published private(set) var deviceStatuses: [DeviceStatus] = []
     @Published private(set) var isListening = false
+    @Published private(set) var lastTranscript: String?
     @Published private(set) var lastError: String?
 
     /// Same debug hook as `MockGlassesSession.onSpeak` so `SchedulingView` can
@@ -67,6 +82,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     private let wearables: WearablesInterface
     private var registrationTask: Task<Void, Never>?
     private var devicesTask: Task<Void, Never>?
+    private var deviceListenerTokens: [DeviceIdentifier: [AnyListenerToken]] = [:]
 
     // MARK: - Audio
 
@@ -94,8 +110,71 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         devicesTask = Task { [weak self] in
             for await devices in wearables.devicesStream() {
                 self?.devices = devices
+                self?.trackDevices(devices)
             }
         }
+        trackDevices(wearables.devices)
+    }
+
+    /// Mirrors each device's link state + compatibility into `deviceStatuses`,
+    /// re-reading on every change the SDK announces.
+    private func trackDevices(_ identifiers: [DeviceIdentifier]) {
+        let current = Set(identifiers)
+        deviceListenerTokens = deviceListenerTokens.filter { current.contains($0.key) }
+
+        for id in identifiers where deviceListenerTokens[id] == nil {
+            guard let device = wearables.deviceForIdentifier(id) else { continue }
+            let refresh: @Sendable () -> Void = { [weak self] in
+                Task { @MainActor [weak self] in self?.refreshDeviceStatuses() }
+            }
+            deviceListenerTokens[id] = [
+                device.addLinkStateListener { _ in refresh() },
+                device.addCompatibilityListener { _ in refresh() },
+            ]
+        }
+        refreshDeviceStatuses()
+    }
+
+    private func refreshDeviceStatuses() {
+        deviceStatuses = devices.compactMap { id in
+            guard let device = wearables.deviceForIdentifier(id) else { return nil }
+            return DeviceStatus(
+                id: id,
+                name: device.nameOrId(),
+                linkState: device.linkState,
+                compatibility: device.compatibility()
+            )
+        }
+    }
+
+    /// Human-readable reason AutoDeviceSelector has nothing to pick, so the
+    /// wearer/dev gets "open the hinges" or "update firmware" instead of an
+    /// opaque `noEligibleDevice`.
+    private func eligibilityProblem() -> String {
+        refreshDeviceStatuses()
+        guard let status = deviceStatuses.first else {
+            return "Meta AI hasn't reported any glasses. Are they paired and on?"
+        }
+        switch (status.linkState, status.compatibility) {
+        case (.disconnected, _):
+            return "\(status.name) isn't connected over Bluetooth. Open the hinges / take them out of the case, make sure they show as connected in Meta AI, and check Developer Mode is on for these glasses (Meta AI → Settings → your glasses)."
+        case (.connecting, _):
+            return "\(status.name) is still connecting — try again in a few seconds."
+        case (_, .deviceUpdateRequired):
+            return "\(status.name) needs a firmware update (Meta AI → your glasses → update)."
+        case (_, .sdkUpdateRequired):
+            return "This app's DAT SDK is too old for \(status.name) — bump meta-wearables-dat-ios in project.yml."
+        case (_, .undefined):
+            return "The SDK hasn't determined compatibility for \(status.name) yet — try again in a few seconds."
+        case (.connected, .compatible):
+            return "\(status.name) looks eligible — this may be a transient SDK state; try again."
+        @unknown default:
+            return "\(status.name) is in a state this build doesn't recognize (link: \(status.linkState), compat: \(status.compatibility))."
+        }
+    }
+
+    func openFirmwareUpdate() async {
+        do { try await wearables.openFirmwareUpdate() } catch { lastError = error.localizedDescription }
     }
 
     // MARK: - Registration (one-time handoff to the Meta AI app)
@@ -160,6 +239,15 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     private func beginRecognition() async {
         guard isListening else { return }
 
+        // Ask for the mic explicitly (rather than relying on the engine start to
+        // prompt) so a denial shows up as a readable error instead of a silent
+        // zero-format input.
+        guard await AVAudioApplication.requestRecordPermission() else {
+            lastError = "Microphone permission was denied — enable it in Settings → Brownmellon."
+            isListening = false
+            return
+        }
+
         let authorized = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
         }
@@ -178,9 +266,11 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        if speechRecognizer.supportsOnDeviceRecognition {
-            request.requiresOnDeviceRecognition = true
-        }
+        // Prefer on-device (privacy, offline) but don't *require* it — on a
+        // phone that hasn't downloaded the language assets, requiring it makes
+        // every request fail instantly, which looked like "the wake word
+        // doesn't work" on first hardware test.
+        request.requiresOnDeviceRecognition = false
         recognitionRequest = request
 
         let inputNode = audioEngine.inputNode
@@ -202,12 +292,24 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self, self.isListening else { return }
                 if let result {
-                    self.onTranscript?(result.bestTranscription.formattedString)
+                    let text = result.bestTranscription.formattedString
+                    self.lastTranscript = text
+                    self.onTranscript?(text)
                 }
                 // Apple ends a recognition task after ~1 minute of audio (or on
                 // error). The wake word has to stay live indefinitely, so roll
-                // straight into a fresh request.
-                if error != nil || result?.isFinal == true {
+                // into a fresh request — with a short pause on error so a
+                // persistently failing recognizer doesn't spin at 100% CPU.
+                if let error {
+                    let nsError = error as NSError
+                    // 1110 = "no speech detected" (a normal timeout), 216 = cancelled by us.
+                    if nsError.code != 1110 && nsError.code != 216 {
+                        self.lastError = "Speech recognition: \(error.localizedDescription)"
+                    }
+                    self.tearDownRecognition(deactivateSession: false)
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await self.beginRecognition()
+                } else if result?.isFinal == true {
                     self.tearDownRecognition(deactivateSession: false)
                     await self.beginRecognition()
                 }
@@ -257,6 +359,15 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     // MARK: - GlassesSession: capturePhoto (DAT)
 
     func capturePhoto() async throws -> UIImage {
+        do {
+            return try await capturePhotoUnrecorded()
+        } catch {
+            lastError = error.localizedDescription
+            throw error
+        }
+    }
+
+    private func capturePhotoUnrecorded() async throws -> UIImage {
         guard isRegistered else { throw SessionError.notRegistered }
         guard !devices.isEmpty else { throw SessionError.noDevice }
 
@@ -270,6 +381,8 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         let session: DeviceSession
         do {
             session = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables))
+        } catch DeviceSessionError.noEligibleDevice {
+            throw SessionError.noEligibleDevice(eligibilityProblem())
         } catch {
             throw SessionError.sessionFailed(String(describing: error))
         }

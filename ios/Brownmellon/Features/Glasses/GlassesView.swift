@@ -33,18 +33,39 @@ struct GlassesView: View {
             }
 
             Section("Glasses") {
-                if session.devices.isEmpty {
+                if session.deviceStatuses.isEmpty {
                     Text("No glasses detected — open the hinges and check Bluetooth.")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(session.devices, id: \.self) { device in
-                        Label(String(describing: device), systemImage: "eyeglasses")
+                    ForEach(session.deviceStatuses) { device in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(device.name, systemImage: "eyeglasses")
+                            HStack(spacing: 12) {
+                                statusPill(linkText(device.linkState), good: device.linkState == .connected)
+                                statusPill(compatText(device.compatibility), good: device.compatibility == .compatible)
+                            }
+                            .font(.caption)
+                        }
+                        if device.compatibility == .deviceUpdateRequired {
+                            Button("Update glasses firmware in Meta AI") {
+                                Task { await session.openFirmwareUpdate() }
+                            }
+                        }
+                    }
+                    if !session.deviceStatuses.contains(where: \.isEligible) {
+                        Text("A photo needs the glasses to be both Connected and Compatible. If they're Disconnected while worn and open, check Developer Mode is on for these glasses in Meta AI → Settings → your glasses (not just App Info).")
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
                     }
                 }
             }
 
             Section("Microphone") {
                 LabeledContent("Wake-word listener", value: session.isListening ? "Listening" : "Off")
+                if let heard = session.lastTranscript, !heard.isEmpty {
+                    LabeledContent("Last heard", value: heard)
+                        .lineLimit(2)
+                }
                 Text("Starts automatically on the Schedule tab. Audio routes over the glasses' Bluetooth link when they're connected as a headset.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -66,5 +87,31 @@ struct GlassesView: View {
         case .available: return "Not connected"
         case .unavailable: return "Unavailable"
         }
+    }
+
+    private func linkText(_ state: LinkState) -> String {
+        switch state {
+        case .connected: return "Connected"
+        case .connecting: return "Connecting…"
+        case .disconnected: return "Disconnected"
+        }
+    }
+
+    private func compatText(_ compatibility: Compatibility) -> String {
+        switch compatibility {
+        case .compatible: return "Compatible"
+        case .deviceUpdateRequired: return "Firmware update needed"
+        case .sdkUpdateRequired: return "SDK update needed"
+        case .undefined: return "Checking…"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    private func statusPill(_ text: String, good: Bool) -> some View {
+        Text(text)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background((good ? Color.green : Color.orange).opacity(0.2), in: Capsule())
+            .foregroundStyle(good ? .green : .orange)
     }
 }

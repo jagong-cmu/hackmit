@@ -8,7 +8,10 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: ""
+    # Free "Personal Team" — enough to sideload onto our own phones (PRD §
+    # Deployment). Teammates building to their own phone: put your team ID
+    # here locally (Xcode → Settings → Accounts shows it) and don't commit it.
+    DEVELOPMENT_TEAM: 3MNSW98DSV
     CODE_SIGN_STYLE: Automatic
 
 packages:
