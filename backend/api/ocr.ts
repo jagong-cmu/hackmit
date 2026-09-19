@@ -66,6 +66,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json(result);
   } catch (err) {
     console.error('ocr handler failed', err);
+    // Gemini free tier is 20 requests/day/model — surface that distinctly so
+    // the phone can say "daily limit" instead of a generic failure.
+    const message = err instanceof Error ? err.message : String(err);
+    if (/429|RESOURCE_EXHAUSTED|quota/i.test(message)) {
+      res.status(429).json({ error: 'model quota exceeded' });
+      return;
+    }
     res.status(502).json({ error: 'vision processing failed' });
   }
 }

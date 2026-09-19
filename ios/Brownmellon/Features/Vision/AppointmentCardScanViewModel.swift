@@ -55,7 +55,7 @@ final class AppointmentCardScanViewModel: ObservableObject {
             await glasses.speak("I found: \(title), \(dateDescription). Should I add it to your calendar?")
         } catch {
             state = .failed(String(describing: error))
-            await glasses.speak("Something went wrong reading that card. Let's try again.")
+            await glasses.speak(BackendErrors.spokenMessage(for: error, otherwise: "Something went wrong reading that card. Let's try again."))
         }
     }
 

@@ -43,7 +43,7 @@ final class ReadToMeViewModel: ObservableObject {
             await glasses.speak(result.text)
         } catch {
             state = .failed(String(describing: error))
-            await glasses.speak("Something went wrong reading that. Let's try again.")
+            await glasses.speak(BackendErrors.spokenMessage(for: error, otherwise: "Something went wrong reading that. Let's try again."))
         }
     }
 }

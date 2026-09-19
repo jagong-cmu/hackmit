@@ -77,6 +77,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json(await checkAd(imageBase64));
   } catch (err) {
     console.error('scam-check handler failed', err);
+    const message = err instanceof Error ? err.message : String(err);
+    if (/429|RESOURCE_EXHAUSTED|quota/i.test(message)) {
+      res.status(429).json({ error: 'model quota exceeded' });
+      return;
+    }
     res.status(502).json({ error: 'scam check processing failed' });
   }
 }

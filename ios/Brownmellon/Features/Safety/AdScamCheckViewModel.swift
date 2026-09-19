@@ -49,7 +49,7 @@ final class AdScamCheckViewModel: ObservableObject {
             await glasses.speak(spokenSummary(for: result))
         } catch {
             state = .failed(String(describing: error))
-            await glasses.speak("Something went wrong checking that ad. Let's try again.")
+            await glasses.speak(BackendErrors.spokenMessage(for: error, otherwise: "Something went wrong checking that ad. Let's try again."))
         }
     }
 

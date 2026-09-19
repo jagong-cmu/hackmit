@@ -57,6 +57,37 @@ const FALLBACK: Intent = {
   reason: "I'm having trouble right now. Please try again.",
 };
 
+const QUOTA_FALLBACK: Intent = {
+  ...FALLBACK,
+  reason: "I've hit my daily limit for understanding requests. Please try again later.",
+};
+
+const NO_INTENT: Intent = { intent: "unknown", title: null, start: null, end: null, reason: null };
+
+// The briefing question has a handful of phrasings and nothing to extract —
+// answering it locally is faster, never hits the model quota, and still works
+// when Gemini is down. Everything with a date/time still goes to the model.
+const BRIEFING_PATTERNS = [
+  /\bwhat('s| is| do i have| have i got)?\s*(on\s+)?(my\s+)?(schedule|calendar|agenda|day|plans?)\b.*\btoday\b/,
+  /\bwhat do i have\s+(today|on today)\b/,
+  /\b(today'?s|my)\s+(schedule|calendar|agenda|appointments?|plans?)\b/,
+  /\banything\s+(on\s+)?(today|my calendar|my schedule)\b/,
+  /\bwhat('s| is)\s+(happening|going on|up)\s+today\b/,
+];
+
+function localIntent(command: string): Intent | null {
+  const text = command.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").replace(/\s+/g, " ").trim();
+  if (BRIEFING_PATTERNS.some((re) => re.test(text))) {
+    return { ...NO_INTENT, intent: "daily_briefing" };
+  }
+  return null;
+}
+
+function isQuotaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /429|RESOURCE_EXHAUSTED|quota/i.test(message);
+}
+
 // gemini-3.6-flash intermittently 503s with "high demand" (observed live from
 // ocr.ts) — short retry with backoff instead of surfacing it to the wearer.
 async function generateWithRetry(
@@ -89,6 +120,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const { command, now, timeZone } = parsedBody.data;
 
+  const local = localIntent(command);
+  if (local) {
+    return json(local);
+  }
+
   try {
     const response = await generateWithRetry({
       model: MODEL,
@@ -113,6 +149,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return json(parsed.data);
   } catch (error) {
     console.error("parse-intent failed:", error);
+    // A quota wall is a 200 with a spoken reason, not a 502: the phone treats
+    // non-2xx as "something went wrong", and the wearer should hear *why*.
+    if (isQuotaError(error)) {
+      return json(QUOTA_FALLBACK);
+    }
     return json(FALLBACK, 502);
   }
 }

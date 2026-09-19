@@ -80,6 +80,11 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     var onSpeak: ((String) -> Void)?
 
     private let wearables: WearablesInterface
+    /// Long-lived on purpose: the selector resolves its `activeDevice`
+    /// asynchronously from the SDK's device/link streams. Creating one right
+    /// before `createSession` (as an earlier version did) raced that and threw
+    /// `noEligibleDevice` for glasses that were plainly connected.
+    private let deviceSelector: AutoDeviceSelector
     private var registrationTask: Task<Void, Never>?
     private var devicesTask: Task<Void, Never>?
     private var deviceListenerTokens: [DeviceIdentifier: [AnyListenerToken]] = [:]
@@ -97,6 +102,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     override init() {
         let wearables = Wearables.shared
         self.wearables = wearables
+        self.deviceSelector = AutoDeviceSelector(wearables: wearables)
         self.registrationState = wearables.registrationState
         self.devices = wearables.devices
         super.init()
@@ -378,9 +384,20 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             }
         }
 
+        // Give the selector a moment to settle on a device if it hasn't yet
+        // (e.g. first capture right after registration / hinges just opened).
+        if deviceSelector.activeDevice == nil {
+            let problem = eligibilityProblem()
+            let selector = deviceSelector
+            try await Self.withTimeout(seconds: 5, or: SessionError.noEligibleDevice(problem)) {
+                for await device in selector.activeDeviceStream() where device != nil { return }
+                throw SessionError.noEligibleDevice(problem)
+            }
+        }
+
         let session: DeviceSession
         do {
-            session = try wearables.createSession(deviceSelector: AutoDeviceSelector(wearables: wearables))
+            session = try wearables.createSession(deviceSelector: deviceSelector)
         } catch DeviceSessionError.noEligibleDevice {
             throw SessionError.noEligibleDevice(eligibilityProblem())
         } catch {
