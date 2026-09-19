@@ -6,13 +6,13 @@ Full platform feasibility research (DAT capabilities, battery data, legal risk a
 
 ## Problem / target user
 
-Adults 60+ face friction with managing appointments, reading small print (mail, labels, menus), remembering who people are, and getting help quickly when something goes wrong. Existing solutions assume comfort with phone screens and apps. Brownmellon moves the interaction to voice + glasses camera so the phone can stay in a pocket — the glasses have no display, so every interaction is spoken.
+Adults 60+ face friction with managing appointments, reading small print (mail, labels, menus), evaluating suspicious advertisements, and getting help quickly when something goes wrong. Existing solutions assume comfort with phone screens and apps. Brownmellon moves the interaction to voice + glasses camera so the phone can stay in a pocket — the glasses have no display, so every interaction is spoken.
 
 ## Goals
 
 - A working, demoable hands-free assistant on real Ray-Ban Meta Gen 2 hardware + a physical iPhone by the end of the hackathon weekend
 - Every v1 feature works end-to-end, not just as a mock
-- Be explicit about hardware/platform limits instead of overpromising — especially facial recognition and emergency calling, both of which are meaningfully constrained by iOS and by the current state of Meta's SDK
+- Be explicit about hardware/platform limits instead of overpromising — especially that ad-scam screening is advisory, not proof, and that emergency calling is meaningfully constrained by iOS
 
 ## Non-goals (v1)
 
@@ -20,7 +20,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 - Not autonomously booking real appointments with outside businesses
 - Not continuously recording or logging the wearer's environment
 - Not supporting Android in v1
-- Not a general people-identification system — facial recognition matches only against people the wearer's caregiver has explicitly enrolled
+- Not a fraud-verification service — advertisement screening provides a risk signal, not a definitive determination that an ad is legitimate, AI-generated, or a scam
 
 ## v1 feature requirements
 
@@ -59,16 +59,17 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 **Requirements:** voice-triggered only — DAT does not currently expose the glasses' capture button/tap gesture as an event to third-party apps (confirmed against Meta's DAT GitHub discussions), so there is no button-press fallback in v1.
 
-### 5. Facial recognition (consented enrollment only)
+### 5. Advertisement scam detection (OCR-only)
 
-**Setup (caregiver, one-time per person):** in setup mode, the caregiver looks at the family member through the glasses camera and says "This is [name], my [relationship]." One photo is captured, a face embedding is generated via a single stateless backend call (the photo itself is not retained server-side), and the embedding + name/relationship are stored **locally on-device only** — encrypted, and never exposed through any UI, not even to the wearer, and never transmitted to any cloud store.
+**Trigger:** "Hey Brownmellon, check this ad" while looking at a printed or on-screen advertisement.
 
-**Runtime:** wearer looks at a person and says a natural trigger phrase ("nice to meet you" / "who is this") → one photo captured → embedding computed via the same backend call → compared only against the locally stored enrolled set → spoken result ("That's your daughter, Angela") or an explicit "I don't recognize this person" — never a guess.
+**Flow:** one still photo → backend OCR extracts the advertisement's visible text → the backend assesses the text for AI/synthetic-content signals and scam-risk patterns (for example, impersonation, urgency, guaranteed returns, payment demands, or suspicious links) → spoken result through the glasses speaker.
 
 **Requirements:**
-- Matches only against caregiver-enrolled individuals — never against any external or stranger database
-- No user-facing way to view, browse, or export the enrolled face store — this is a deliberate design constraint
-- Enrollment requires an explicit consent step from the person being enrolled (or their legal representative), not just the caregiver's say-so — this still counts as biometric-identifier collection under laws like Illinois's BIPA regardless of how the data is later stored
+- Single-shot, voice-triggered capture only; the photo and OCR text are used for one stateless inference call and are never retained server-side
+- The response must state a clear advisory result: whether the **text** shows AI/synthetic-content signals, whether it has potential scam indicators, and the specific visible cues that led to the alert
+- OCR-only means v1 does not inspect pixels or prove who created an advertisement; it cannot reliably determine whether an image itself was AI-generated or whether an ad is definitively a scam
+- High-risk results should prompt a safe next action, such as "Don't call or pay from this ad; verify the organization through its official website or a trusted contact"
 
 ### 6. Emergency contact
 
@@ -91,7 +92,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 | Scam-call alerts | Needs Android's `NotificationListenerService`; out of scope now that v1 targets iOS only |
 | Auto-scheduling (books real appointments) | Needs an outbound-calling/booking agent against arbitrary businesses — a different product, not a glasses feature |
 | Find lost things | Needs continuous recording of the wearer's home — blocked on both battery and privacy grounds |
-| In-person scam detection | Needs recording live conversations with people who haven't consented — 12 U.S. states require all-party consent to record a private conversation |
+| Live-conversation scam detection | Needs recording live conversations with people who haven't consented — 12 U.S. states require all-party consent to record a private conversation |
 | Ambient voice-to-calendar | Higher false-positive risk with no screen to show a draft; revisit once the confirm-before-add pattern is proven via feature 1 |
 | Medication mix-up check | Real value, but needs a careful liability pass (label-reading, not medical advice) before it's ready to scope |
 | Companion check-ins | Targets loneliness/isolation, not core to this build's thesis |
@@ -103,8 +104,8 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 - **Client:** native iOS (Swift), using Meta's Wearables Device Access Toolkit (DAT) for camera/mic/speaker access to Ray-Ban Meta Gen 2 glasses (audio-only hardware — no display, no Neural Band).
 - **Calendar:** Google Calendar via Google Sign-In + Calendar API. OAuth consent screen in "Testing" publishing status — sufficient for a hackathon demo, full Google verification not required.
-- **AI backend:** one thin serverless function (Vercel), calling the Claude API directly. All photo/audio processing is stateless — sent for a single inference call, never persisted server-side. Only structured results (parsed text, face embeddings, transcripts, calendar events) return to the phone and are stored there.
-- **Local storage:** face embeddings + enrolled names/relationships, emergency contact mapping, auth tokens — encrypted at rest on-device (iOS Keychain / file protection), never synced to any backend.
+- **AI backend:** one thin serverless function (Vercel), calling the Claude API directly. All photo/audio processing is stateless — sent for a single inference call, never persisted server-side. Only structured results (parsed text, ad-scam assessments, transcripts, calendar events) return to the phone and are stored there.
+- **Local storage:** emergency contact mapping and auth tokens — encrypted at rest on-device (iOS Keychain / file protection), never synced to any backend.
 - **Auth:** Google Sign-In only; single wearer, single device assumption for v1.
 - **Wake word:** "Hey Brownmellon" for general voice commands (features 1–4). The emergency trigger (feature 6) uses its own dedicated phrase and listener, independent of the general pipeline.
 
@@ -160,7 +161,7 @@ protocol SecureLocalStore {
 
 - **`GlassesSession` (DAT wrapper)** — the highest-risk, most-shared piece (covers mic streaming, camera capture, and speaker output through one session object — don't split this across people, it's one underlying connection). Recommend whoever's most comfortable with Bluetooth/hardware integration builds this first, in their own worktree, and merges it to `main` as soon as the interface is stable — even before every method is fully correct. Everyone else starts immediately against `MockGlassesSession` and swaps to the real one via a rebase once it lands.
 - **`CalendarService`** — needed by Workstream A (both features) and Workstream B (appointment-card scanning writes an event). Whoever gets to it first in Workstream A or B builds it for real; the other just consumes the interface.
-- **`SecureLocalStore`** — needed only by Workstream C; C builds it as part of its own work, no cross-workstream dependency.
+- **`SecureLocalStore`** — needed only by Workstream C for the emergency-contact mapping; C builds it as part of its own work, with no cross-workstream dependency.
 - **One-time setup, not per-workstream work** — do these once, in any worktree, before anyone needs them: Meta Wearables Developer Center registration (`MetaAppID`/`ClientToken`), Google Cloud project + OAuth consent screen (Testing mode), Vercel project + Claude API key.
 
 ### Workstream A — Voice & Calendar
@@ -177,11 +178,11 @@ protocol SecureLocalStore {
 **Depends on:** `GlassesSession` (camera), `CalendarService` (write-only, for feature 3) — mock until foundation lands.
 **Produces for others:** nothing required by A or C.
 
-### Workstream C — Identity & Safety
+### Workstream C — Safety & Emergency
 
-**Owns:** Feature 5 (facial recognition) and Feature 6 (emergency contact) — grouped together because both need the caregiver Setup Mode screen (face enrollment + emergency-contact configuration live in the same UI flow).
-**Files:** `Features/Identity/`, `Features/Setup/`, backend `api/face-embed.ts`.
-**Depends on:** `GlassesSession` (camera + mic), `SecureLocalStore` (builds this itself) — mock `GlassesSession` until foundation lands. Telephony (`tel:` call placement) is native iOS, no dependency on anyone.
+**Owns:** Feature 5 (advertisement scam detection) and Feature 6 (emergency contact) — grouped together because both deliver a simple, spoken safety response after a direct user request.
+**Files:** `Features/Safety/`, `Features/Setup/`, backend `api/scam-check.ts`.
+**Depends on:** `GlassesSession` (camera + mic) and `SecureLocalStore` (for the emergency-contact mapping; C builds it) — mock `GlassesSession` until foundation lands. Telephony (`tel:` call placement) is native iOS, no dependency on anyone.
 **Produces for others:** nothing required by A or B.
 
 ### Suggested worktree setup
@@ -189,12 +190,12 @@ protocol SecureLocalStore {
 ```bash
 git worktree add ../hackmit-voice-calendar -b feature/voice-calendar
 git worktree add ../hackmit-vision-docs -b feature/vision-documents
-git worktree add ../hackmit-identity-safety -b feature/identity-safety
+git worktree add ../hackmit-safety-emergency -b feature/safety-emergency
 ```
 
 **Merge order:** foundation interfaces + whichever real implementation (DAT wrapper, Calendar service) lands first → `main`, immediately, even partially done. Then each workstream rebases onto `main` periodically to pick up the real implementations as they replace the mocks. Feature branches merge to `main` independently as they're demo-ready — there's no required merge order between A, B, and C themselves, since they don't touch each other's files.
 
-**Within each workstream**, the original single-track build order still applies: Workstream A builds feature 1 before feature 2 (2 reuses 1's trigger infra); Workstream C builds feature 5's enrollment flow before feature 6, since Setup Mode's UI shell is shared between them and easiest to build once, on the first feature.
+**Within each workstream**, the original single-track build order still applies: Workstream A builds feature 1 before feature 2 (2 reuses 1's trigger infra); Workstream C builds feature 5's OCR-and-assessment flow before feature 6, since its camera capture and spoken safety-response patterns are reusable.
 
 ## Known risks / open items
 
@@ -202,3 +203,4 @@ git worktree add ../hackmit-identity-safety -b feature/identity-safety
 - Only one physical Ray-Ban Meta Gen 2 pair confirmed available — plan device-testing time across the team accordingly
 - DAT is in public developer preview and not yet cleared for App Store distribution — fine for a sideloaded hackathon build, not a launch
 - Set up the Google Cloud project and OAuth consent screen early — losing build time to this later would hurt
+- OCR and model-based scam screening can produce false positives and false negatives; frame every result as an explanation of visible risk signals, not a verdict
