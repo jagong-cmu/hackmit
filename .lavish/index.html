@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="en" data-theme="corporate">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elder Glasses Feasibility</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, td, th, .badge) { overflow-wrap: anywhere; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--color-base-200); }
+  .verdict-build { border-left: 4px solid var(--color-success); }
+  .verdict-caveat { border-left: 4px solid var(--color-warning); }
+  .verdict-blocked { border-left: 4px solid var(--color-error); }
+  .anchor-target { scroll-margin-top: 88px; }
+</style>
+</head>
+<body class="min-h-screen bg-base-200 text-base-content">
+
+<div class="navbar bg-base-100/90 backdrop-blur sticky top-0 z-30 border-b border-base-300 px-4 lg:px-8">
+  <div class="navbar-start">
+    <span class="font-bold text-lg">👓 Elder Glasses Feasibility</span>
+  </div>
+  <div class="navbar-end hidden md:flex gap-1 text-sm">
+    <a href="#tldr" class="btn btn-ghost btn-sm">TL;DR</a>
+    <a href="#architecture" class="btn btn-ghost btn-sm">Architecture</a>
+    <a href="#output" class="btn btn-ghost btn-sm">Audio/Display</a>
+    <a href="#voice" class="btn btn-ghost btn-sm">Voice</a>
+    <a href="#live" class="btn btn-ghost btn-sm">Live/Battery</a>
+    <a href="#features" class="btn btn-ghost btn-sm">Features</a>
+    <a href="#facial-recognition" class="btn btn-ghost btn-sm">Facial ID risk</a>
+    <a href="#recommendation" class="btn btn-ghost btn-sm">Recommendation</a>
+    <a href="#round2" class="btn btn-ghost btn-sm">New feature list</a>
+    <a href="#new-ideas" class="btn btn-ghost btn-sm">New ideas</a>
+    <a href="#sources" class="btn btn-ghost btn-sm">Sources</a>
+  </div>
+</div>
+
+<main class="mx-auto max-w-6xl p-4 sm:p-6 lg:p-10 flex flex-col gap-12">
+
+  <!-- HERO -->
+  <section class="hero bg-base-100 rounded-box border border-base-300 mt-4">
+    <div class="hero-content flex-col text-center py-10 px-4 sm:px-10">
+      <div class="badge badge-outline badge-lg mb-3">HackMIT · Sunday planning call → feasibility pass</div>
+      <h1 class="text-3xl sm:text-4xl font-bold max-w-3xl">Can you actually build an elder-care AI assistant on Meta Ray-Ban glasses?</h1>
+      <p class="py-4 max-w-2xl text-base-content/70">
+        Short answer: yes for two of the five features, "yes with real limits" for two more, and one is
+        legally live-wire territory that Meta itself just backed away from. Below is the feature-by-feature
+        breakdown, the actual developer-access picture as of September 2026, and a build order for the weekend.
+      </p>
+    </div>
+  </section>
+
+  <!-- TL;DR -->
+  <section id="tldr" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">TL;DR verdicts</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Build first</span>
+          <h3 class="card-title text-base mt-1">Scheduling &amp; reminders</h3>
+          <p class="text-sm text-base-content/70">Well-trodden path. Mic + phone NLU + calendar/alarm API. Lowest risk, highest reliability.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Build first</span>
+          <h3 class="card-title text-base mt-1">Keyword-triggered flows</h3>
+          <p class="text-sm text-base-content/70">Buildable, but on your own wake word — "Hey Meta" is locked and not extensible.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-warning/40 verdict-caveat">
+        <div class="card-body p-4">
+          <span class="badge badge-warning badge-sm">Android-only</span>
+          <h3 class="card-title text-base mt-1">Scam detection</h3>
+          <p class="text-sm text-base-content/70">Real feature, but it's a phone-OS capability, not a glasses one. iOS blocks it; Android doesn't.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-warning/40 verdict-caveat">
+        <div class="card-body p-4">
+          <span class="badge badge-warning badge-sm">Shaky precedent</span>
+          <h3 class="card-title text-base mt-1">Fall detection + SOS</h3>
+          <p class="text-sm text-base-content/70">Sensor access still rolling out, and head-worn IMU is a weak fall-detection signal. Call itself happens on the phone, not the glasses.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-error/40 verdict-blocked">
+        <div class="card-body p-4">
+          <span class="badge badge-error badge-sm">Demo-only, capped</span>
+          <h3 class="card-title text-base mt-1">Facial recognition</h3>
+          <p class="text-sm text-base-content/70">Technically trivial. Meta built this exact feature and pulled it in June 2026 after backlash. Enrolled-contacts-only, consented, never pitch broader.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ARCHITECTURE -->
+  <section id="architecture" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">The platform reality: glasses are a peripheral, not a computer</h2>
+    <div class="card bg-base-100 border border-base-300">
+      <div class="card-body">
+        <p>
+          Meta opened a real, official SDK in September 2025 &mdash; the <strong>Wearables Device Access Toolkit
+          (DAT)</strong>, now at v0.6 (Swift/Kotlin, Android + iOS). It is a <strong>phone-side SDK</strong>: your
+          code runs on the paired phone, and the glasses are a Bluetooth peripheral exposing camera, mic array,
+          and speaker. Nothing you write runs on the glasses' own chip. That's actually good news for a hackathon:
+          it's a normal mobile app with a fancy peripheral, not embedded firmware work.
+        </p>
+        <div class="mermaid">
+flowchart LR
+  U["Elderly wearer"] -->|"speaks / looks at someone"| G["Ray-Ban Meta glasses<br/>camera · 5-mic array · speaker"]
+  G <-->|"Bluetooth — DAT SDK v0.6"| P["Companion phone app<br/>(all real compute lives here)"]
+  P -->|"vision API call"| V["Cloud: face / photo match"]
+  P -->|"LLM call"| L["Cloud: scam classifier / NLU"]
+  P -->|"calendar & alarm APIs"| C["Phone calendar / reminders"]
+  P -->|"telephony API"| E["Phone dialer: 911 / family"]
+  P -->|"NotificationListenerService<br/>(Android only)"| N["Incoming calls / SMS / Messenger"]
+  P -->|"spoken response"| G
+        </div>
+        <div class="alert alert-warning mt-2">
+          <span><strong>Status caveat:</strong> DAT is in public developer preview. Fine for sideloaded hackathon
+          builds on your own hardware &mdash; not yet cleared for public app-store distribution (Meta's own GA
+          timeline for that is unclear/contested across sources). Build and demo freely; don't plan a launch on it yet.</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">Camera — real, works</h3>
+          <p class="text-sm text-base-content/70">12MP ultra-wide: still photos with EXIF, and live streaming up to 720p/30fps to the phone. Proven end-to-end by the 2024 Harvard "I-XRAY" project.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">Mic — real, but not the hotword</h3>
+          <p class="text-sm text-base-content/70">5-mic array is streamable. "Hey Meta" itself is fixed and confirmed non-extensible by Meta's own dev forum &mdash; you run your own keyword spotter on top.</p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">IMU / calling — unconfirmed</h3>
+          <p class="text-sm text-base-content/70">Accelerometer/IMU access is described as "eventually" rolling out. No evidence DAT can place a phone call at all &mdash; that stays a normal phone-app job.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OUTPUT MODES -->
+  <section id="output" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Talking back to the wearer: confirmed &mdash; audio-only, Gen 2</h2>
+    <div class="alert alert-success">
+      <span>
+        <strong>Hardware confirmed: Ray-Ban Meta Gen 2.</strong> This settles the open question &mdash; camera +
+        5-mic array + open-ear speakers, <strong>no display, no Neural Band.</strong> Every feature below is
+        audio-only by hardware, not by choice. That's not a downgrade from the plan: audio-first was already the
+        top recommendation, so this just removes the "maybe add a display card" stretch idea entirely. Design for
+        voice in and voice out, full stop.
+      </span>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">What Gen 2 gives you</span>
+          <h3 class="card-title text-base mt-1">Camera, mic, speaker &mdash; all real, all usable today</h3>
+          <p class="text-sm text-base-content/80">
+            DAT exposes Gen 2's 12MP ultra-wide camera (still + up to 720p/30fps live stream), the 5-mic array,
+            and speaker playback to your phone app. That covers every feature's input and output needs: face
+            match, scam-call audio alerts, voice scheduling, SOS countdown.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-error/40 verdict-blocked">
+        <div class="card-body p-4">
+          <span class="badge badge-error badge-sm">What Gen 2 does not have</span>
+          <h3 class="card-title text-base mt-1">No display, no gesture wristband</h3>
+          <p class="text-sm text-base-content/80">
+            The in-lens display and Neural Band EMG wristband are exclusive to the separate <strong>Ray-Ban
+            Display</strong> model. Don't design toward "show a card of facts" for this hardware &mdash; there's
+            nowhere to show it. Everything is spoken.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="alert alert-info">
+      <span>
+        <strong>Bonus data point for facial recognition specifically:</strong> the dormant "Name Tag"
+        facial-recognition code that EFF/Wired found already shipped inside Meta's own app (then pulled in June
+        2026) was found specifically on <strong>Ray-Ban Meta Gen 2</strong> devices &mdash; the exact hardware
+        you have. That's a direct confirmation the camera&rarr;face-match pipeline works end-to-end on this model;
+        Meta already built and shipped it, just kept it switched off.
+      </span>
+    </div>
+    <div class="alert alert-warning">
+      <span>
+        <strong>New UX wrinkle worth designing around:</strong> Gen 2's speakers are open-ear, not private
+        in-ear audio &mdash; sound can leak and be faintly audible to whoever is standing close, especially
+        somewhere quiet. Saying "this is your granddaughter Emma" out loud while looking directly at Emma is
+        different from a silent display only the wearer sees: it can be overheard by the person being identified,
+        which is either mildly awkward or socially useful ("caught not recognizing someone") depending on framing.
+        Worth a deliberate script choice &mdash; e.g. keep phrasing generic/discreet, or lean into it as a feature
+        ("glasses that help you greet people warmly") rather than hiding it.
+      </span>
+    </div>
+    <div class="alert alert-error">
+      <span>
+        <strong>The one real audio restriction: mic and hi-fi output are mutually exclusive.</strong> Per Meta's
+        own DAT docs: <em>"activating HFP switches the glasses away from A2DP, and audio output quality drops to
+        8&nbsp;kHz mono for the duration of the session."</em> Speaker-only playback (mic off) gets 44.1/48&nbsp;kHz
+        stereo; the moment the mic is listening &mdash; which is most of the time, since every feature here is
+        voice-triggered &mdash; output drops to phone-call-quality mono. Design for that sound quality as the
+        default, not the exception. Also: only one third-party app session can hold the glasses at a time, and
+        (confirmed by a Meta maintainer on the DAT forum) there is no way to hook into or extend Meta AI's own
+        voice pipeline &mdash; see the Voice commands section below.
+      </span>
+    </div>
+  </section>
+
+  <!-- VOICE COMMANDS -->
+  <section id="voice" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Voice commands: fully buildable, zero integration with "Hey Meta"</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Yes, you can build real voice commands &mdash; your own wake phrase, your own NLU, your own logic, running
+      on DAT's streamed mic audio. What you cannot do is plug into, extend, or hand off with Meta's own assistant.
+      These will run as two completely separate systems on the same glasses.
+    </p>
+    <div class="card bg-base-100 border border-error/40 verdict-blocked">
+      <div class="card-body">
+        <h3 class="font-semibold">Straight from Meta's own DAT maintainer</h3>
+        <div class="mockup-code text-sm">
+          <pre data-prefix="Q"><code>Can we customize the "Hey Meta" wake word for our app?</code></pre>
+          <pre data-prefix="A" class="text-error"><code>"It is not possible to customise the 'Hey Meta' wake up word." &mdash; Oscar Falmer, Meta maintainer</code></pre>
+        </div>
+        <div class="mockup-code text-sm mt-2">
+          <pre data-prefix="$"><code>developer forum, hands-on report:</code></pre>
+          <pre data-prefix=">" class="text-error"><code>"Meta AI does not have any API's, so no custom phrases, actions, handoff etc... nothing."</code></pre>
+        </div>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">What you build instead</h3>
+          <p class="text-sm text-base-content/80">
+            Your own always-listening keyword spotter running on the phone, fed by DAT's continuous mic stream,
+            triggering your own NLU/logic, speaking back through the glasses. Fully within your control &mdash;
+            just entirely separate from Meta AI. One anecdote in the DAT forum (an app called "oorion" reportedly
+            responds to its own wake word on these glasses) is unconfirmed as an official partnership, but is
+            consistent with &mdash; and suggestive evidence for &mdash; exactly this DIY approach working in production.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-warning/40 verdict-caveat">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">The only quasi-bridge that exists</h3>
+          <p class="text-sm text-base-content/80">
+            One workaround surfaced in the forum: tell native Meta AI ("Hey Meta, message &hellip;") to relay a
+            text message to an external bot, which then triggers your third-party logic. That's a delayed,
+            text-relay hack dependent on Meta AI's own messaging integrations &mdash; not real-time voice
+            command handoff. Don't design around it as a primary path.
+          </p>
+        </div>
+      </div>
+    </div>
+    <div class="alert alert-warning">
+      <span>
+        <strong>UX implication:</strong> the wearer has to remember and use a second, different wake phrase
+        specific to your app &mdash; on top of "Hey Meta" they may already know. Real risk of confusion for
+        elderly users. Consider whether some features need a wake word at all: scam alerts and SOS are
+        system-initiated (they push to the wearer, not the other way around, so no trigger phrase is needed), and
+        scheduling could be triggered by a phone-app button tap instead of speech. Reserve your custom wake
+        word for the one place voice genuinely helps most &mdash; e.g. "nice to meet you" naturally cueing facial
+        recognition, since it's a phrase people already say.
+      </span>
+    </div>
+  </section>
+
+  <!-- LIVE STREAMING -->
+  <section id="live" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Making it "live": streaming works, battery is the real wall</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Live camera + mic streaming is real and proven &mdash; Meta's own <strong>"Live AI"</strong> mode already
+      does continuous camera+mic streaming with an ongoing AI conversation about what the wearer is looking at.
+      DAT gives third parties the same raw ingredients. The limiting factor isn't the SDK &mdash; it's power.
+    </p>
+    <div class="stats stats-vertical sm:stats-horizontal shadow bg-base-100 border border-base-300 w-full">
+      <div class="stat">
+        <div class="stat-title">Typical / standby use</div>
+        <div class="stat-value text-success text-3xl">~8 hrs</div>
+        <div class="stat-desc">Gen 2, light mixed use</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Mixed camera+audio+AI</div>
+        <div class="stat-value text-warning text-3xl">~4 hrs</div>
+        <div class="stat-desc">Meta's own rating</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Continuous Live AI</div>
+        <div class="stat-value text-error text-3xl">~30 min</div>
+        <div class="stat-desc">Meta's own first-party feature</div>
+      </div>
+    </div>
+    <div class="alert alert-error">
+      <span>
+        If Meta's own, chip-to-cloud-optimized feature only lasts ~30 minutes of continuous streaming, a
+        third-party DAT app doing the same continuous video streaming will not beat that. "Always-on and live all
+        day" is not realistic on Gen 2. Design around it, don't fight it.
+      </span>
+    </div>
+    <div class="card bg-base-100 border border-base-300">
+      <div class="card-body">
+        <h3 class="font-semibold">The architecture that actually survives a day</h3>
+        <ul class="list-disc list-inside text-sm text-base-content/80 flex flex-col gap-1">
+          <li><strong>Ambient layer, always on:</strong> mic-only streaming for the keyword spotter &mdash; audio draws far less power than video.</li>
+          <li><strong>Camera, episodic only:</strong> open a live video stream for a few seconds right after a trigger (e.g. the facial-recognition phrase), run the match, close it. Don't stream video continuously "just in case" &mdash; it's both a battery killer and the exact always-watching-camera framing that got Meta's own Name Tag in trouble.</li>
+          <li><strong>Keep the phone app active:</strong> per the DAT changelog, camera streaming keeps flowing at the transport level when the phone app backgrounds, but video decoding stops &mdash; so real-time facial-rec processing likely needs the companion app in an active/foreground-ish state. Test this early; it has real UX implications (can't just work while the phone sits locked in a pocket).</li>
+          <li><strong>Scam detection needs none of this</strong> &mdash; it's a phone-side background notification listener, not a glasses stream, so it can run all day at effectively no glasses-battery cost.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section id="features" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Feature-by-feature scorecard</h2>
+    <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>DAT gives you</th>
+            <th>Real blocker</th>
+            <th>Legal / ethical risk</th>
+            <th>HackMIT verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">Scheduling &amp; reminders</td>
+            <td>Mic capture + speaker output &mdash; both real, documented</td>
+            <td>None major &mdash; need your own wake phrase since "Hey Meta" is locked</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-success">Build first</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Keyword-triggered flows</td>
+            <td>Continuous mic streaming</td>
+            <td>No hook into native hotword chip; custom spotter costs phone battery</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-success">Build (pairs with #1)</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Scam detection</td>
+            <td>Speaker output only &mdash; detection logic is 100% phone-OS, not glasses</td>
+            <td>Android: <code>NotificationListenerService</code> works. iOS: Apple blocks 3rd-party call/SMS content access.</td>
+            <td><span class="badge badge-warning badge-sm">Medium</span></td>
+            <td><span class="badge badge-warning">Android-only demo</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Fall detection + auto-SOS</td>
+            <td>IMU/accelerometer access still "eventually" rolling out, not confirmed live</td>
+            <td>Head-worn IMU is a scientifically weak proxy for a fall (vs. wrist/waist). 911 call must be placed by the phone, not the glasses.</td>
+            <td><span class="badge badge-success badge-sm">Low legal risk</span></td>
+            <td><span class="badge badge-warning">Demo as "SOS trigger," not real fall detection</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Facial recognition (people ID)</td>
+            <td>Camera streaming is real and proven &mdash; nothing technical blocks it</td>
+            <td>Nothing technical. The blocker is entirely legal/reputational.</td>
+            <td><span class="badge badge-error badge-sm">High</span></td>
+            <td><span class="badge badge-error">Demo-only, consented enrollment, capped scope</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- deep dives -->
+    <div class="flex flex-col gap-3">
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">1 &middot; 2 &nbsp;Scheduling, reminders &amp; keyword-triggered flows &mdash; build these first</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>This is the closest thing to a supported use case DAT already targets: stream mic audio to the phone,
+          run your own lightweight keyword spotter (since you can't hook "Hey Meta" &mdash; confirmed on Meta's DAT
+          GitHub discussions, issue threads #85 and #96), parse intent with an on-phone or cloud LLM, write to the
+          phone's calendar/alarm APIs, and speak the confirmation back through the glasses' speaker.</p>
+          <p>Nothing here is glasses-specific engineering &mdash; it's a normal voice-assistant mobile app with the
+          glasses as a hands-free mic/speaker. This is also the feature that best matches Angela's original framing:
+          replace basic phone functions (calendar, alarms) with something ambient and non-screen-based. It works
+          for both the 60s&ndash;70s "lifestyle" segment and the 80s&ndash;90s "medical need" segment the team was
+          debating, so it doesn't force the demographic decision.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">3 &nbsp;Scam detection &mdash; real, but Android-only</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>The glasses contribute nothing to <em>detecting</em> a scam call/text &mdash; that's entirely a
+          phone-OS-level capability. On Android, a companion app using <code>NotificationListenerService</code> can
+          read incoming call/SMS/Messenger/WhatsApp content, run it through an LLM classifier, and push a spoken
+          flag to the glasses. This is exactly the mechanism Meta's own companion app already uses to announce
+          calls/messages on Ray-Ban glasses, so the pattern is proven.</p>
+          <p>On iOS, Apple sharply restricts third-party access to call and SMS content &mdash; there's no
+          equivalent open path. <strong>Scope this to an Android phone for the demo</strong> and say so explicitly
+          rather than promising cross-platform.</p>
+        </div>
+      </div>
+
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">4 &nbsp;Fall detection + emergency SOS &mdash; weakest technical footing</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>Two separate problems stack here. First, DAT's accelerometer/IMU exposure is described in Meta's own
+          materials as something that "will eventually open up" &mdash; not confirmed shipped as of this research,
+          so verify against the live v0.6 changelog before committing a demo to it. Second, even where IMU data
+          exists, a head-mounted sensor is a known-weaker signal for fall detection than a wrist or waist-worn one
+          (glasses rotate and can detach independently of the wearer's center of mass) &mdash; this is a documented
+          limitation in the smart-eyewear fall-detection literature, not a solved problem the way Apple Watch's
+          fall detection is.</p>
+          <p>Third, nothing in DAT places phone calls. The "auto-call 911" part has to be ordinary phone telephony
+          API code, triggered by whatever signal the glasses provide. If you build this, frame it honestly as an
+          <strong>SOS trigger with a countdown</strong> (accel spike + orientation change &rarr; phone-side
+          confirmation UI &rarr; simulated/real call), not as validated fall detection.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FACIAL RECOGNITION DEEP DIVE -->
+  <section id="facial-recognition" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Facial recognition: technically trivial, Meta itself just retreated from it</h2>
+    <div class="alert alert-error">
+      <span>
+        The plan's own note &mdash; "fine to demo at hackathon, address ethics post-event if pursuing further" &mdash;
+        is reasonable for a controlled, consent-based demo, but shouldn't be read as low-risk for anything beyond that.
+        Meta's own, much better-resourced legal team built this exact feature and pulled it back under pressure.
+      </span>
+    </div>
+    <div class="card bg-base-100 border border-base-300">
+      <div class="card-body">
+        <ul class="steps steps-vertical lg:steps-horizontal w-full">
+          <li class="step step-error">
+            <div class="text-left text-sm py-2">
+              <div class="font-semibold">Oct 2024</div>
+              <div class="text-base-content/70">Harvard students' "I-XRAY" combines Ray-Ban Meta + live facial rec (PimEyes) + LLM to dox strangers in real time. Proves the pipeline is trivial once camera access exists.</div>
+            </div>
+          </li>
+          <li class="step step-error">
+            <div class="text-left text-sm py-2">
+              <div class="font-semibold">Feb 2026</div>
+              <div class="text-base-content/70">Reports surface that Meta is internally building a "Name Tag" facial-ID feature for Ray-Ban glasses.</div>
+            </div>
+          </li>
+          <li class="step step-error">
+            <div class="text-left text-sm py-2">
+              <div class="font-semibold">Apr 2026</div>
+              <div class="text-base-content/70">70+ civil-liberties, domestic-violence, LGBTQ+ and immigrant-advocacy orgs publicly urge Meta to abandon the plan.</div>
+            </div>
+          </li>
+          <li class="step step-error">
+            <div class="text-left text-sm py-2">
+              <div class="font-semibold">Jun 4, 2026</div>
+              <div class="text-base-content/70">EFF/Wired find dormant Name Tag code already shipped to 50M+ Ray-Ban Meta Gen 2 devices via a routine app update.</div>
+            </div>
+          </li>
+          <li class="step step-error">
+            <div class="text-left text-sm py-2">
+              <div class="font-semibold">Jun 9, 2026</div>
+              <div class="text-base-content/70">Meta removes the facial-recognition code from the app following the press coverage.</div>
+            </div>
+          </li>
+        </ul>
+        <div class="divider">Legal exposure</div>
+        <p class="text-sm text-base-content/80">
+          Illinois's Biometric Information Privacy Act (BIPA) remains the sharpest U.S. exposure for face-geometry
+          capture without consent &mdash; 107+ new suits filed in 2025 alone, Clearview AI settled for $51.75M. A
+          2024 amendment capped per-scan damages, applied retroactively by a 2026 7th Circuit ruling, but the
+          statute still clearly covers this category. No smart-glasses-specific suit has landed yet &mdash; you'd be early, not safe.
+        </p>
+      </div>
+    </div>
+    <div class="alert alert-info">
+      <span><strong>What's actually fine to demo:</strong> face-matching against a small, explicitly-enrolled set of
+      photos the elderly user's own family/caregiver consented to add (e.g. "this is your daughter Angela") &mdash;
+      framed and pitched on stage as exactly that, never as general stranger identification.</span>
+    </div>
+  </section>
+
+  <!-- RECOMMENDATION -->
+  <section id="recommendation" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">Recommended build order for the weekend</h2>
+    <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+      <table class="table">
+        <thead><tr><th class="w-16">Tier</th><th>Feature</th><th>Why here</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="badge badge-success">1</span></td>
+            <td class="font-medium">Voice scheduling/reminders + custom keyword trigger</td>
+            <td>Core demo, lowest risk, works on the actual borrowed hardware today, demonstrates the "ambient, non-screen assistant" thesis directly.</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning">2</span></td>
+            <td class="font-medium">Scam-alert prototype (Android phone only)</td>
+            <td>Strong differentiation and story, but scope the demo phone to Android and say so on stage.</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-warning">3</span></td>
+            <td class="font-medium">Facial ID for enrolled family photos only</td>
+            <td>Technically easy, high wow-factor &mdash; but cap it hard: consented enrollment only, never pitched as general people-ID given what Meta itself just went through.</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-error">4</span></td>
+            <td class="font-medium">Fall detection + SOS</td>
+            <td>Cut or downgrade to a manual/voice-triggered SOS button unless you confirm live IMU access in DAT v0.6 early in the weekend &mdash; the sensor path and the "fall detection" science are both unconfirmed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">Before you build</h3>
+          <ul class="list-disc list-inside text-sm text-base-content/80 flex flex-col gap-1">
+            <li><s class="text-base-content/40">Confirm the exact Ray-Ban model</s> &mdash; <strong>resolved: Gen 2.</strong> Design every output as spoken audio; no display path exists on this hardware. See <a href="#output" class="link">Audio/Display</a>.</li>
+            <li>Pull the live DAT v0.6 changelog and confirm it exposes Gen 2's IMU/accelerometer specifically before committing to fall detection &mdash; that access was described as "eventually" rolling out, not confirmed shipped.</li>
+            <li>Use Meta's Mock Device Kit to start coding now, since you have only one borrowed physical pair.</li>
+            <li>Settle the 60s&ndash;70s vs. 80s&ndash;90s target-demographic debate first &mdash; it directly decides whether fall detection/SOS (skews 80s&ndash;90s) is worth the build risk at all.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-base-300">
+        <div class="card-body p-4">
+          <h3 class="font-semibold">Framing for judges</h3>
+          <ul class="list-disc list-inside text-sm text-base-content/80 flex flex-col gap-1">
+            <li>Lead with scheduling/reminders + scam alerts as the shipped-feeling core.</li>
+            <li>Present facial ID explicitly as "consented family enrollment," and name-drop that you know about Meta's own Name Tag retreat &mdash; shows real diligence, not naivety.</li>
+            <li>Present fall detection as a labeled prototype/SOS trigger, not a finished safety feature.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROUND 2: EXPANDED FEATURE LIST -->
+  <section id="round2" class="anchor-target flex flex-col gap-4">
+    <div class="divider">Round 2</div>
+    <h2 class="text-2xl font-bold">The latest brainstormed list, scored against the same constraints</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Nine new/expanded feature ideas came out of the next brainstorm. None of them change the platform facts above
+      &mdash; still Gen 2, still audio-only, still DAT's camera/mic/speaker/calendar/telephony surface, still the
+      ~30&nbsp;min continuous-streaming battery wall. Scored against that, plus one new cross-cutting legal issue
+      that this batch surfaces for the first time.
+    </p>
+    <div class="alert alert-error">
+      <span>
+        <strong>New cross-cutting risk: recording other people's conversations.</strong> Three of these ideas
+        (ambient voice-to-calendar, in-person scam detection, "find lost things" via recording history) all imply
+        listening to or recording conversations the wearer is having with <em>other people</em>, not just the
+        wearer's own commands. 12 U.S. states require <strong>all-party consent</strong> to record a private
+        conversation &mdash; including California, Illinois, Florida, and Massachusetts &mdash; and smart glasses
+        that transcribe or log audio in the background are exactly the fact pattern privacy-law commentary is
+        currently flagging as high-risk, even though federal law (18 U.S.C. &sect;2511) only requires one-party
+        consent. This is a materially different risk class from the facial-recognition BIPA issue already covered
+        above &mdash; it's about audio, not biometrics, and it's about strangers/acquaintances mid-conversation, not
+        enrolled family photos.
+      </span>
+    </div>
+    <div class="overflow-x-auto rounded-box border border-base-300 bg-base-100">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>What it needs</th>
+            <th>Real blocker</th>
+            <th>Legal / ethical risk</th>
+            <th>Verdict</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-medium">Voice-to-calendar (ambient detection)</td>
+            <td>Continuous mic-only streaming + NLU extraction, calendar write</td>
+            <td>Same architecture as the already-validated keyword spotter, just parsing full utterances instead of one phrase &mdash; false-positive risk ("mentioned a dentist" &ne; "has an appointment") needs a spoken confirm step since there's no screen to show a draft</td>
+            <td><span class="badge badge-warning badge-sm">Medium &mdash; overheard-conversation consent</span></td>
+            <td><span class="badge badge-warning">Build with confirm-before-add</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Appointment-card scanning</td>
+            <td>One camera still + OCR/vision-LLM parse + calendar write</td>
+            <td>None major &mdash; same episodic-camera pattern as facial ID, just aimed at a card instead of a face</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-success">Build first</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Personal reminders (meds/appointments)</td>
+            <td>Identical to the "Scheduling &amp; reminders" feature already scored above</td>
+            <td>None new</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-success">Build first (same feature)</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Auto-scheduling (books real dentist/doctor appts)</td>
+            <td>An outbound-calling/booking agent that talks to a business's phone system or web form &mdash; nothing DAT provides</td>
+            <td>Entirely outside the glasses/DAT surface. This is "build an AI phone agent that calls businesses," a separate product, not a weekend add-on</td>
+            <td><span class="badge badge-warning badge-sm">Medium &mdash; agent acting/paying on someone's behalf</span></td>
+            <td><span class="badge badge-error">Cut, or fake it: draft the request, human sends it</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Scam detection (calls / mail &amp; email / in-person)</td>
+            <td>Calls: Android <code>NotificationListenerService</code> (already scored). Mail/email: camera snap + vision-LLM classify. In-person: continuous conversation audio + LLM classify</td>
+            <td>Mail/email path is just the appointment-card pipeline pointed at junk mail &mdash; easy. In-person path requires standing recording of a live conversation with someone who hasn't consented</td>
+            <td><span class="badge badge-error badge-sm">High for in-person &middot; Low for mail/email</span></td>
+            <td><span class="badge badge-warning">Split it: build mail/email, cut in-person</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Find lost things (search recording history)</td>
+            <td>A persistent, searchable video/photo log of the wearer's day</td>
+            <td>Directly contradicts the battery architecture above (episodic camera only, ~30&nbsp;min continuous cap) and turns the glasses into an always-recording device</td>
+            <td><span class="badge badge-error badge-sm">High &mdash; continuous surveillance of the wearer's home and anyone in it</span></td>
+            <td><span class="badge badge-error">Cut as scoped; replace with "tag it" below</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Daily briefing ("what do I have today")</td>
+            <td>Voice command + calendar read + spoken summary</td>
+            <td>None &mdash; simplest feature on either list</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-success">Build first</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Missed-call notification</td>
+            <td>Android <code>NotificationListenerService</code> + spoken alert through glasses</td>
+            <td>Meta's own companion app may already announce calls on these glasses, and only one third-party app can hold the glasses session at a time &mdash; check for overlap/conflict before building</td>
+            <td><span class="badge badge-success badge-sm">Low</span></td>
+            <td><span class="badge badge-warning">Android-only; verify it isn't redundant with stock behavior</span></td>
+          </tr>
+          <tr>
+            <td class="font-medium">Facial recognition &mdash; on-device-only "secretive" store</td>
+            <td>Same camera pipeline as before, but face embeddings stored locally, never sent to any cloud model and never exposed via a user-facing UI</td>
+            <td>None technical &mdash; on-device face-embedding matching is a solved, standard mobile-ML pattern</td>
+            <td><span class="badge badge-warning badge-sm">Medium &mdash; better story, same underlying law</span></td>
+            <td><span class="badge badge-warning">Build, consented-enrollment-only (see below)</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="flex flex-col gap-3">
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">Auto-scheduling &mdash; this is a different product, not a glasses feature</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>Everything else on both lists is "glasses as hands-free mic/camera for a phone app." Auto-scheduling is
+          "AI agent that calls a dentist's office, negotiates a time slot, and commits the elderly user to it." That
+          needs outbound telephony or web-form automation against arbitrary third-party businesses &mdash; a
+          meaningfully larger system, with its own failure modes (books the wrong slot, mishears a callback number,
+          commits someone to something they didn't approve). Demo-safe version: the glasses/phone flow drafts a
+          request ("Call Dr. Kim's office, ask for the earliest cleaning slot after the 10th") and hands it to the
+          wearer or a caregiver to actually send &mdash; keeps the value, removes the agent-acting-autonomously risk.</p>
+        </div>
+      </div>
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">"Find lost things" &mdash; replace continuous recall with an explicit "tag it" moment</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>The pitch ("locate meds placed in a cabinet without being asked to remember") requires the glasses to
+          have already been recording when the item was put away &mdash; i.e., a rolling video history of the
+          wearer's home, on by default. That's the same shape as Microsoft's "Recall" feature, which drew heavy
+          privacy criticism for exactly this pattern, and it's a harder version of the problem Meta already retreated
+          from with Name Tag. It also just doesn't fit the hardware: continuous camera streaming is a ~30-minute
+          battery budget, not an all-day one.</p>
+          <p>A scoped-down version keeps most of the value: the wearer says a trigger phrase ("remember this") while
+          looking at where they're placing something, the glasses take one photo, tag it with a timestamp, and store
+          it locally. Later, "where did I put my glasses cleaner" surfaces that one tagged photo. Opt-in, episodic,
+          cheap on battery, and the wearer controls exactly what gets logged instead of everything being logged by
+          default.</p>
+        </div>
+      </div>
+      <div tabindex="0" class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <div class="collapse-title font-semibold">Facial recognition's "secretive database" &mdash; good privacy design, doesn't change the legal picture</div>
+        <div class="collapse-content text-sm text-base-content/80 flex flex-col gap-2">
+          <p>Keeping face embeddings on-device, out of any cloud model, and non-exportable even to the user is a
+          genuinely good design &mdash; it removes the breach/secondary-use/data-sale risk that drives most
+          biometric-privacy litigation, and it's a strong, honest answer to "what happens to grandma's face data."
+          It does <em>not</em> remove BIPA-style exposure, though: those statutes attach at the point of
+          <strong>collecting</strong> a biometric identifier without informed consent, regardless of where it's later
+          stored or who can see it. The already-recommended scope &mdash; enrolled family/caregiver photos only,
+          explicit consent at enrollment, never pitched as general stranger-ID &mdash; still applies. Frame the
+          on-device store as the responsible-storage half of the answer, and the consented-enrollment as the
+          responsible-collection half; you need both.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NEW IDEAS -->
+  <section id="new-ideas" class="anchor-target flex flex-col gap-4">
+    <h2 class="text-2xl font-bold">New feature ideas &mdash; other elder pain points that fit this hardware</h2>
+    <p class="text-base-content/70 max-w-3xl">
+      Picked for the same reason "appointment-card scanning" works well: they reuse a pipeline you're already
+      building (episodic camera snap &rarr; vision/OCR &rarr; speak result, or voice command &rarr; phone API
+      &rarr; speak result) instead of asking for new hardware capability.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Reuses the appointment-card pipeline</span>
+          <h3 class="card-title text-base mt-1">"Read this to me"</h3>
+          <p class="text-sm text-base-content/80">
+            Point at a pill bottle, mail, a menu, a bank statement, small print on a package &mdash; one photo, OCR
+            or a vision LLM, read it aloud. Probably the single best-fit idea on either list: it's the same
+            snap-and-speak pipeline as appointment cards, directly addresses low-vision/small-print pain (one of the
+            most common complaints in this age group), and has almost no legal exposure since it's reading the
+            wearer's own documents.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-warning/40 verdict-caveat">
+        <div class="card-body p-4">
+          <span class="badge badge-warning badge-sm">Frame as label-reading, not medical advice</span>
+          <h3 class="card-title text-base mt-1">Medication mix-up check</h3>
+          <p class="text-sm text-base-content/80">
+            Photograph a pill or bottle, cross-check against a stored prescription list, flag "this looks like your
+            evening blood-pressure pill, not the morning one." High value for a real pain point (medication errors
+            are a leading cause of elder ER visits), but say out loud that it's reading labels/matching a list the
+            wearer's caregiver entered, never diagnosing or recommending &mdash; keeps it out of medical-device
+            liability territory.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Simpler and safer than full missed-call detection</span>
+          <h3 class="card-title text-base mt-1">Contact-aware caller announcement</h3>
+          <p class="text-sm text-base-content/80">
+            "It's your grandson Michael calling" instead of just a ringtone &mdash; match the incoming number against
+            phone contacts and speak the relationship, not just the name. Solves a very common real complaint
+            (elderly users not recognizing a name or missing quiet-vibrate calls) without needing notification-content
+            scraping the way scam detection does.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Sidesteps the shaky IMU fall-detection problem</span>
+          <h3 class="card-title text-base mt-1">One-phrase emergency contact</h3>
+          <p class="text-sm text-base-content/80">
+            A dedicated spoken phrase ("call my daughter" / "I need help") that triggers a phone call, independent of
+            any fall/accelerometer signal. Delivers most of the safety value of the SOS feature today, without
+            betting the demo on IMU access that's unconfirmed in DAT v0.6 or on head-worn fall-detection science
+            that's genuinely weak.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-success/40 verdict-build">
+        <div class="card-body p-4">
+          <span class="badge badge-success badge-sm">Addresses isolation, not just tasks</span>
+          <h3 class="card-title text-base mt-1">Companion check-ins</h3>
+          <p class="text-sm text-base-content/80">
+            A scheduled, opt-in "how's your day going" prompt, with an easy voice path to call a family member.
+            Loneliness/social isolation is one of the most-cited quality-of-life issues for elderly users, and
+            everything on both feature lists is task-oriented (calendar, scams, meds) &mdash; this is the one idea
+            that targets the emotional/social pain point directly, using nothing but the already-built voice pipeline.
+          </p>
+        </div>
+      </div>
+      <div class="card bg-base-100 border border-warning/40 verdict-caveat">
+        <div class="card-body p-4">
+          <span class="badge badge-warning badge-sm">Feasible, but check the audio-quality tradeoff first</span>
+          <h3 class="card-title text-base mt-1">Audio wayfinding for errands</h3>
+          <p class="text-sm text-base-content/80">
+            Spoken turn-by-turn directions through the glasses speaker, driven by the phone's own GPS (no glasses
+            sensor needed, so no IMU dependency). Useful for the "walk to the pharmacy" case. One thing to test
+            early: per the HFP tradeoff already documented above, having the mic open (for "where am I") while
+            speaking directions back drops audio to 8&nbsp;kHz mono &mdash; fine for speech, but confirm it's still
+            intelligible outdoors before committing to it as a headline demo feature.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section id="sources" class="anchor-target flex flex-col gap-2 pb-8">
+    <h2 class="text-2xl font-bold">Sources</h2>
+    <div class="card bg-base-100 border border-base-300">
+      <div class="card-body p-4 text-sm">
+        <ul class="list-disc list-inside flex flex-col gap-1 text-base-content/80">
+          <li><a class="link" href="https://developers.meta.com/blog/introducing-meta-wearables-device-access-toolkit/" target="_blank" rel="noopener">Meta for Developers &mdash; Introducing the Wearables Device Access Toolkit</a></li>
+          <li><a class="link" href="https://roadtovr.com/meta-ray-ban-smart-glasses-third-party-app-sdk-device-access-toolkit/" target="_blank" rel="noopener">Road to VR &mdash; Meta Ray-Ban third-party app SDK</a></li>
+          <li><a class="link" href="https://www.uploadvr.com/meta-wearables-device-access-toolkit-public-preview/" target="_blank" rel="noopener">UploadVR &mdash; DAT public preview</a></li>
+          <li><a class="link" href="https://9to5google.com/2026/05/15/meta-ray-ban-display-glasses-third-party-apps/" target="_blank" rel="noopener">9to5Google &mdash; Ray-Ban Display opens to third-party apps (May 2026)</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-android" target="_blank" rel="noopener">GitHub &mdash; facebook/meta-wearables-dat-android</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-android/discussions/96" target="_blank" rel="noopener">DAT GitHub Discussion #96 &mdash; voice / wake-word</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-android/discussions/85" target="_blank" rel="noopener">DAT GitHub Discussion #85 &mdash; custom wakeup keyword</a></li>
+          <li><a class="link" href="https://www.meta.com/blog/ray-ban-meta-ai-glasses-new-companion-app/" target="_blank" rel="noopener">Meta &mdash; Ray-Ban Meta AI glasses companion app</a></li>
+          <li><a class="link" href="https://developers.meta.com/wearables/faq/" target="_blank" rel="noopener">Meta for Developers &mdash; Wearables FAQ</a></li>
+          <li><a class="link" href="https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10221500/" target="_blank" rel="noopener">PMC &mdash; smart eyeglasses fall-detection study</a></li>
+          <li><a class="link" href="https://www.404media.co/someone-put-facial-recognition-tech-onto-metas-smart-glasses-to-instantly-dox-strangers/" target="_blank" rel="noopener">404 Media &mdash; the Harvard "I-XRAY" project</a></li>
+          <li><a class="link" href="https://techcrunch.com/2026/02/13/meta-plans-to-add-facial-recognition-to-its-smart-glasses-report-claims/" target="_blank" rel="noopener">TechCrunch &mdash; Meta facial recognition plans (Feb 2026)</a></li>
+          <li><a class="link" href="https://petapixel.com/2026/04/15/meta-urged-to-abandon-facial-recognition-plans-for-ray-ban-glasses/" target="_blank" rel="noopener">PetaPixel &mdash; advocacy groups urge Meta to abandon plans (Apr 2026)</a></li>
+          <li><a class="link" href="https://stateofsurveillance.org/news/eff-meta-ray-ban-facial-recognition-code-move-fast-surveil-2026/" target="_blank" rel="noopener">State of Surveillance / EFF &mdash; dormant code found shipped (Jun 2026)</a></li>
+          <li><a class="link" href="https://petapixel.com/2026/06/09/meta-removes-facial-recognition-code-from-ray-ban-smart-glasses-app/" target="_blank" rel="noopener">PetaPixel &mdash; Meta removes the code (Jun 2026)</a></li>
+          <li><a class="link" href="https://www.harmreport.com/lawsuits/bipa-biometric-privacy/" target="_blank" rel="noopener">Harm Report &mdash; BIPA biometric privacy litigation overview</a></li>
+          <li><a class="link" href="https://wearables.developer.meta.com/docs/develop/dat/microphones-and-speakers/" target="_blank" rel="noopener">Meta DAT docs &mdash; microphones and speakers (HFP/A2DP tradeoff)</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-android/discussions/85" target="_blank" rel="noopener">DAT GitHub Discussion #85 &mdash; "it is not possible to customise the Hey Meta wake up word" (Meta maintainer)</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-android/discussions/96" target="_blank" rel="noopener">DAT GitHub Discussion #96 &mdash; "Meta AI does not have any API's" (developer report)</a></li>
+          <li><a class="link" href="https://www.androidinfotech.com/ray-ban-meta-gen-2-packs-meta-ai/" target="_blank" rel="noopener">Android Infotech &mdash; Ray-Ban Meta Gen 2 battery / Live AI</a></li>
+          <li><a class="link" href="https://www.emarketer.com/content/ray-ban-meta-smart-glasses-on-device-assistant--with-battery-life-limitations" target="_blank" rel="noopener">eMarketer &mdash; on-device assistant battery life limitations</a></li>
+          <li><a class="link" href="https://github.com/facebook/meta-wearables-dat-ios/blob/main/CHANGELOG.md" target="_blank" rel="noopener">DAT iOS CHANGELOG &mdash; background camera streaming behavior</a></li>
+          <li><a class="link" href="https://www.recordinglaw.com/party-two-party-consent-states/" target="_blank" rel="noopener">Recording Law &mdash; two-party consent states (2026 guide)</a></li>
+          <li><a class="link" href="https://www.workplaceprivacyreport.com/2025/12/articles/artificial-intelligence/the-hidden-legal-minefield-compliance-concerns-with-ai-smart-glasses-part-2-two-party-consent-and-ai-note-taking/" target="_blank" rel="noopener">Workplace Privacy Report &mdash; AI smart glasses and two-party consent</a></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(fg, bg) {
+    const fa = fg[3] / 255, ba = bg[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (fg[0]*fa + bg[0]*ba*(1-fa)) / a,
+      (fg[1]*fa + bg[1]*ba*(1-fa)) / a,
+      (fg[2]*fa + bg[2]*ba*(1-fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBg = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBg = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0,0,0,0];
+    const [r,g,b,a] = compositeRgba(bodyBg, rootBg);
+    if (a > 0) return (0.2126*r + 0.7152*g + 0.0722*b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (!rendering) void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (e) { console.error("Mermaid render failed:", e); return; }
+        applied = theme;
+      }
+    } finally { rendering = false; if (queued) queueRender(); }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  darkQuery.addEventListener("change", queueRender);
+</script>
+</body>
+</html>
