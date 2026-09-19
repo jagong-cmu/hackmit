@@ -10,33 +10,15 @@ final class SchedulingCoordinator {
     private let glasses: GlassesSession
     private let calendar: CalendarService
     private let intents: IntentClient
-    private let listener: WakeWordListener
 
     init(
         glasses: GlassesSession,
         calendar: CalendarService,
-        intents: IntentClient,
-        listener: WakeWordListener = WakeWordListener()
+        intents: IntentClient
     ) {
         self.glasses = glasses
         self.calendar = calendar
         self.intents = intents
-        self.listener = listener
-    }
-
-    func start() {
-        glasses.startListening { [weak self] transcript in
-            // The recognizer callback has no thread guarantees; hop to the main
-            // actor before touching the listener's debounce state.
-            Task { @MainActor [weak self] in
-                guard let self, let command = self.listener.consume(transcript) else { return }
-                await self.handle(command)
-            }
-        }
-    }
-
-    func stop() {
-        glasses.stopListening()
     }
 
     /// Exposed for tests and for a Setup-Mode "try it" button.
@@ -57,9 +39,6 @@ final class SchedulingCoordinator {
         } catch {
             await glasses.speak("Sorry, something went wrong. Please try again.")
         }
-
-        // Our own speech leaks into the mic; don't let it eat the next command.
-        listener.reset()
     }
 
     private func speakBriefing() async {

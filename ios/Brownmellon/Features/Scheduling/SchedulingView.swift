@@ -9,9 +9,14 @@ import SwiftUI
 struct SchedulingView: View {
     @StateObject private var viewModel: SchedulingViewModel
 
-    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL) {
+    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL, router: VoiceCommandRouter) {
         _viewModel = StateObject(
-            wrappedValue: SchedulingViewModel(glasses: glasses, calendar: calendar, backendBaseURL: backendBaseURL)
+            wrappedValue: SchedulingViewModel(
+                glasses: glasses,
+                calendar: calendar,
+                backendBaseURL: backendBaseURL,
+                router: router
+            )
         )
     }
 

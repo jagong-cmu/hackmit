@@ -12,10 +12,16 @@ final class SchedulingViewModel: ObservableObject {
     @Published private(set) var isListening = false
 
     private let coordinator: SchedulingCoordinator
+    private let router: VoiceCommandRouter
 
-    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL) {
+    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL, router: VoiceCommandRouter) {
         let intents = IntentClient(endpoint: backendBaseURL.appendingPathComponent("api/parse-intent"))
         self.coordinator = SchedulingCoordinator(glasses: glasses, calendar: calendar, intents: intents)
+        self.router = router
+
+        router.setSchedulingHandler { [weak self] command in
+            await self?.coordinator.handle(command)
+        }
 
         let showResponse: (String) -> Void = { [weak self] text in self?.lastResponse = text }
         if let mock = glasses as? MockGlassesSession {
@@ -26,12 +32,11 @@ final class SchedulingViewModel: ObservableObject {
     }
 
     func start() {
-        coordinator.start()
+        router.start()
         isListening = true
     }
 
     func stop() {
-        coordinator.stop()
         isListening = false
     }
 

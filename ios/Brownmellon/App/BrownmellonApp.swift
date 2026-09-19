@@ -12,6 +12,7 @@ struct BrownmellonApp: App {
     // objects, not view state — the ViewModels are the ObservableObjects.
     private let glasses: GlassesSession
     private let datSession: DATGlassesSession?
+    private let voiceRouter: VoiceCommandRouter
     private let calendarService = MockCalendarService()
     private let secureStore = MockSecureLocalStore()
 
@@ -29,6 +30,7 @@ struct BrownmellonApp: App {
         glasses = session
         datSession = session
         #endif
+        voiceRouter = VoiceCommandRouter(glasses: glasses)
     }
 
     private var backendBaseURL: URL {
@@ -49,7 +51,12 @@ struct BrownmellonApp: App {
                     .tabItem { Label("Glasses", systemImage: "eyeglasses") }
                 }
 
-                SchedulingView(glasses: glasses, calendar: calendarService, backendBaseURL: backendBaseURL)
+                SchedulingView(
+                    glasses: glasses,
+                    calendar: calendarService,
+                    backendBaseURL: backendBaseURL,
+                    router: voiceRouter
+                )
                     .tabItem { Label("Schedule", systemImage: "calendar") }
 
                 AppointmentCardScanView(glasses: glasses, calendar: calendarService)
@@ -58,7 +65,7 @@ struct BrownmellonApp: App {
                 ReadToMeView(glasses: glasses)
                     .tabItem { Label("Read To Me", systemImage: "text.viewfinder") }
 
-                AdScamCheckView(glasses: glasses)
+                AdScamCheckView(glasses: glasses, router: voiceRouter)
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
 
                 NavigationStack {
@@ -71,6 +78,8 @@ struct BrownmellonApp: App {
             .onOpenURL { url in
                 Task { await DATGlassesSession.handle(url: url) }
             }
+            .onAppear { voiceRouter.start() }
+            .onDisappear { voiceRouter.stop() }
         }
     }
 }
