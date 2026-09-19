@@ -36,6 +36,8 @@ protocol CalendarService {
     @discardableResult
     func createEvent(title: String, start: Date, end: Date?, location: String?) async throws -> CalendarEvent
 
+    /// Today's events, **sorted by start time ascending** — callers speak
+    /// these aloud in order and do not re-sort.
     func todaysEvents() async throws -> [CalendarEvent]
 }
 
