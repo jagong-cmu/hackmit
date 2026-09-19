@@ -26,9 +26,9 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ### 1. Voice scheduling & reminders
 
-**Trigger:** "Hey Brownmellon, remind me to [x] at [time]" / "...schedule [x] on [date] at [time]"
+**Trigger:** "Hey Dojo, remind me to [x] at [time]" / "...schedule [x] on [date] at [time]"
 
-**Flow:** continuous mic-only streaming on the phone (via DAT) → on-phone keyword spotter for "Hey Brownmellon" → intent/entity parsing via the backend (Claude) → write event to the wearer's Google Calendar → spoken confirmation through the glasses speaker.
+**Flow:** continuous mic-only streaming on the phone (via DAT) → on-phone keyword spotter for "Hey Dojo" → intent/entity parsing via the backend (Claude) → write event to the wearer's Google Calendar → spoken confirmation through the glasses speaker.
 
 **Requirements:**
 - Must speak back what was captured and get an affirmative response before writing to the calendar (e.g. "Reminder set: take blood pressure pills, today at 6pm — is that right?")
@@ -37,7 +37,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ### 2. Daily briefing
 
-**Trigger:** "Hey Brownmellon, what do I have today?"
+**Trigger:** "Hey Dojo, what do I have today?"
 
 **Flow:** read the wearer's Google Calendar for today → summarize aloud through the glasses speaker.
 
@@ -45,7 +45,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ### 3. Appointment-card scanning
 
-**Trigger:** "Hey Brownmellon, scan this" while looking at a physical appointment card.
+**Trigger:** "Hey Dojo, scan this" while looking at a physical appointment card.
 
 **Flow:** one still photo via DAT camera → backend parses date/time/provider/location from the image → spoken confirmation → write to Google Calendar on confirmation.
 
@@ -53,7 +53,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ### 4. "Read this to me"
 
-**Trigger:** "Hey Brownmellon, read this to me" while looking at mail, a label, a menu, a bank statement, etc.
+**Trigger:** "Hey Dojo, read this to me" while looking at mail, a label, a menu, a bank statement, etc.
 
 **Flow:** one still photo → backend OCR/vision extracts the text → read aloud through the glasses speaker.
 
@@ -61,7 +61,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ### 5. Advertisement scam detection (OCR-only)
 
-**Trigger:** "Hey Brownmellon, check this ad" while looking at a printed or on-screen advertisement.
+**Trigger:** "Hey Dojo, check this ad" while looking at a printed or on-screen advertisement.
 
 **Flow:** one still photo → backend OCR extracts the advertisement's visible text → the backend assesses the text for AI/synthetic-content signals and scam-risk patterns (for example, impersonation, urgency, guaranteed returns, payment demands, or suspicious links) → spoken result through the glasses speaker.
 
@@ -75,7 +75,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 **Setup (caregiver, one-time):** configure a relation → contact mapping (e.g. "daughter" → a phone number); 911 is always available as a target without separate setup.
 
-**Trigger:** a single, dedicated phrase, separate from "Hey Brownmellon" and short enough to say reliably under stress — recognized by its own always-on listener, bypassing the general NLU pipeline entirely so this path stays simple and reliable.
+**Trigger:** a single, dedicated phrase, separate from "Hey Dojo" and short enough to say reliably under stress — recognized by its own always-on listener, bypassing the general NLU pipeline entirely so this path stays simple and reliable.
 
 **Flow:** phrase detected → phone opens the native iOS call screen for the configured contact or 911 → glasses speak "Calling [contact] now, please confirm on your phone" → wearer or a bystander taps once on the phone to connect.
 
@@ -107,7 +107,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 - **AI backend:** one thin serverless function (Vercel), calling the Claude API directly. All photo/audio processing is stateless — sent for a single inference call, never persisted server-side. Only structured results (parsed text, ad-scam assessments, transcripts, calendar events) return to the phone and are stored there.
 - **Local storage:** emergency contact mapping and auth tokens — encrypted at rest on-device (iOS Keychain / file protection), never synced to any backend.
 - **Auth:** Google Sign-In only; single wearer, single device assumption for v1.
-- **Wake word:** "Hey Brownmellon" for general voice commands (features 1–4). The emergency trigger (feature 6) uses its own dedicated phrase and listener, independent of the general pipeline.
+- **Wake word:** "Hey Dojo" for general voice commands (features 1–4). The emergency trigger (feature 6) uses its own dedicated phrase and listener, independent of the general pipeline.
 
 ## Deployment & device pairing
 
@@ -124,7 +124,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 2. Brownmellon launches, requests device access, and hands off to the Meta AI app for a one-time permission grant (wearer or caregiver approves it, similar to any other OAuth-style consent screen).
 3. Brownmellon opens a DAT session claiming the camera/mic/speaker. Only one third-party app can hold this session at a time, so it can't run alongside another DAT app or Meta AI's own live features simultaneously.
 4. The phone must stay within Bluetooth range of the glasses (tens of feet) — all compute (mic streaming, camera capture, backend calls) happens on the phone, the glasses are a peripheral.
-5. **Open risk, test early:** per DAT's own changelog, backgrounding the phone app stops video decoding even though the camera transport keeps flowing at the transport level. Whether the "Hey Brownmellon" mic-only wake-word listener keeps working with the phone locked in a pocket is unconfirmed — this determines whether "hands-free, phone in pocket" is real or whether the phone needs to stay unlocked/foregrounded. Test in the first build session, since it affects the UX story for every voice-triggered feature.
+5. **Open risk, test early:** per DAT's own changelog, backgrounding the phone app stops video decoding even though the camera transport keeps flowing at the transport level. Whether the "Hey Dojo" mic-only wake-word listener keeps working with the phone locked in a pocket is unconfirmed — this determines whether "hands-free, phone in pocket" is real or whether the phone needs to stay unlocked/foregrounded. Test in the first build session, since it affects the UX story for every voice-triggered feature.
 
 ## Design principles (apply across every feature)
 
@@ -166,7 +166,7 @@ protocol SecureLocalStore {
 
 ### Workstream A — Voice & Calendar
 
-**Owns:** Feature 1 (voice scheduling/reminders + "Hey Brownmellon" keyword trigger) and Feature 2 (daily briefing).
+**Owns:** Feature 1 (voice scheduling/reminders + "Hey Dojo" keyword trigger) and Feature 2 (daily briefing).
 **Files:** `Features/Scheduling/`, backend `api/parse-intent.ts`.
 **Depends on:** `GlassesSession` (mic), `CalendarService` (read + write) — mock until foundation lands.
 **Produces for others:** `CalendarService`, if this workstream builds it first.

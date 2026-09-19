@@ -32,7 +32,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards and read documents aloud."
-        NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Brownmellon\" to respond to voice commands."
+        NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Dojo\" to respond to voice commands."
         # Points the app at the deployed backend by default — required on a
         # physical device, since "localhost" there means the phone itself,
         # not your Mac. Override at build time if you're running `vercel dev`
@@ -44,15 +44,35 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
 
-# Note (Workstream B): GoogleSignIn is here because GoogleCalendarService
-# needs it (shared foundation — see PRD.md § Foundation). The real Meta
-# DAT SDK belongs to the GlassesSession implementation, also shared
-# foundation but not yet built — the app still runs against
-# MockGlassesSession until that lands and this file gets a second
-# `packages:` entry for it.
+  BrownmellonTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BrownmellonTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brownmellon.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - target: Brownmellon
+
+schemes:
+  Brownmellon:
+    build:
+      targets:
+        Brownmellon: all
+        BrownmellonTests: [test]
+    test:
+      targets:
+        - BrownmellonTests
+
+# GoogleSignIn is here because GoogleCalendarService (Core/) needs it. The
+# real Meta DAT SDK belongs to the GlassesSession implementation — not yet
+# built — the app still runs against MockGlassesSession until that lands
+# and this file gets a second `packages:` entry for it.
 #
-# GoogleCalendarService itself isn't usable yet either — it needs a
-# Google Cloud OAuth client ID that doesn't exist yet (PRD § Deployment).
+# GoogleCalendarService itself isn't usable yet either — it needs a Google
+# Cloud OAuth client ID that doesn't exist yet (PRD § Deployment).
 # MockCalendarService is still what's actually wired up in BrownmellonApp.
 #
 # Regenerate the .xcodeproj after any change to this file:

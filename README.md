@@ -1,52 +1,85 @@
-# Workstream B — Vision & Documents
+# Brownmellon
 
-Worktree for `feature/vision-documents` (see `PRD.md` § Parallel workstreams for the full plan). Owns Feature 3 (appointment-card scanning) and Feature 4 ("read this to me").
+Voice-first AI assistant on Ray-Ban Meta Gen 2 glasses + companion iOS app, for adults 60+. See `PRD.md` for the full spec, and `.lavish/index.html` for platform feasibility research (DAT capabilities, battery data, legal risk).
 
-## Status
+This is the **unified project** — one Xcode project, one Vercel backend, all three workstreams' code living side by side under a single layout. Each workstream started in its own git worktree (see PRD § Parallel workstreams); this integration pass reconciled them onto `main` so anyone can build the whole app and pick up any feature from here.
 
-Scaffolded and running against mocks — not yet wired to real glasses hardware or a real calendar.
+## Status by feature
 
-- **Backend (`backend/`)** — real, working `api/ocr.ts` endpoint. Typechecks clean (`npx tsc --noEmit`). Calls the Claude API directly per the PRD's settled architecture, one endpoint with two modes (`appointment` / `read`), stateless — no image or transcript is ever persisted server-side.
-- **iOS (`ios/`)** — real Swift source (view models + SwiftUI views + backend client), generated as an Xcode project via [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`ios/project.yml` is the source of truth — `Brownmellon.xcodeproj` is generated, gitignored, and must be regenerated after any `project.yml` change: `cd ios && xcodegen generate`).
-- **Verified with full Xcode (27.0):** `xcodebuild` succeeds against the real iOS 27.0 SDK with zero errors and zero warnings (`GoogleCalendarService.swift`'s `GIDSignIn`/`GoogleSignIn-iOS` 7.1.0 call signatures included), and the app installs and launches cleanly on an iPhone 17 Simulator without crashing. Fixed two Swift 6-mode concurrency warnings in `MockGlassesSession` along the way (`GlassesSession` protocol is now `@MainActor`; the `PHPickerViewControllerDelegate` callback hops back to the main actor before touching UIKit).
+| # | Feature | Workstream | Status |
+|---|---|---|---|
+| 1 | Voice scheduling/reminders | A — Voice & Calendar | Real backend (`api/parse-intent.ts`) + coordinator/wake-word logic, unit-tested. Manual "try it" field stands in for a mic on Simulator (`SchedulingView`). |
+| 2 | Daily briefing | A | Same coordinator as #1. |
+| 3 | Appointment-card scanning | B — Vision & Documents | Real backend + full iOS flow, verified building and launching on Simulator. |
+| 4 | "Read this to me" | B | Same backend endpoint as #3, different mode. |
+| 5 | Advertisement scam detection (OCR-only) | C — Safety & Emergency | **New scaffold added in this pass** — real backend (`api/scam-check.ts`) + manual-trigger UI, same shape as #3/#4. Not yet voice-triggered or hardware-tested. |
+| 6 | Emergency contact | C | **New scaffold added in this pass** — caregiver setup screen, Keychain-backed contact storage, `tel:` call placement. The PRD's dedicated always-on trigger phrase (bypassing the general NLU pipeline) is real device/DAT work and is **not implemented** — see `EmergencyCallService.swift`. |
 
-## Two things this workstream is deliberately faking, and why
+Nothing talks to the real glasses yet (Meta DAT wrapper doesn't exist) or the real Google Calendar (needs a Google Cloud OAuth client ID — one-time setup, PRD § Deployment). Everything runs against mocks that are real enough to demo and test on Simulator with zero hardware — see "What's mocked" below.
 
-1. **Voice trigger.** The real trigger for both features is "Hey Brownmellon, scan this" / "...read this to me" — but that keyword-routing infrastructure is Workstream A's, and doesn't exist yet. Both screens use a manual button tap instead (`AppointmentCardScanView` / `ReadToMeView`). When A's keyword router lands, wire it to call `AppointmentCardScanViewModel.scan()` / `ReadToMeViewModel.readThisToMe()` directly — they're already designed as the integration seam.
-2. **Camera + speech.** `MockGlassesSession` (`ios/Brownmellon/Core/Mocks/`) uses the system photo picker to stand in for the glasses camera (pick any photo of an appointment card or document) and real on-device text-to-speech (`AVSpeechSynthesizer`) to stand in for the glasses speaker — so the feature is genuinely testable, and audible, on Simulator with zero hardware. Swap for the real `GlassesSession` (DAT-backed) once that shared-foundation piece lands.
+## Layout
 
-Calendar writes go through `MockCalendarService` (in-memory, resets on relaunch) by default. `GoogleCalendarService.swift` is written (real Calendar API v3 calls — create + list events, via `GoogleSignIn-iOS`) and now **verified to compile clean against the real SDK (7.1.0)**, but still **not wired up or usable yet**: it needs a Google Cloud OAuth client ID that doesn't exist yet (one-time setup, PRD § Deployment). Whoever sets up the Google Cloud project should swap it in for the mock in `BrownmellonApp.swift`.
+```
+backend/                       One Vercel project, one endpoint per feature area
+  api/ocr.ts                     Features 3–4 (Gemini)
+  api/parse-intent.ts            Features 1–2 (Claude)
+  api/scam-check.ts              Feature 5 (Gemini)
+ios/
+  project.yml                    XcodeGen source of truth — regenerate after any edit
+  Brownmellon/
+    App/BrownmellonApp.swift     Wires mocks to every feature's entry view
+    Core/                        Shared protocols + real/mock implementations
+      Interfaces.swift             GlassesSession, CalendarService, SecureLocalStore
+      GoogleCalendarService.swift  Real, not wired up (needs OAuth client ID)
+      KeychainSecureLocalStore.swift  Real, used by Setup
+      Mocks/                      MockGlassesSession, MockCalendarService, MockSecureLocalStore
+    Features/
+      Scheduling/                 Features 1–2 (Workstream A)
+      Vision/                     Features 3–4 (Workstream B)
+      Safety/                     Feature 5 (Workstream C)
+      Setup/                      Feature 6 (Workstream C)
+  BrownmellonTests/              WakeWordDetectorTests
+```
 
-## Heads up for whoever picks up A or C's worktree next
+**Adding a feature or picking one up:** put backend logic in its own `backend/api/*.ts` file (stateless, one inference call in, structured JSON out — copy `ocr.ts` or `scam-check.ts`'s shape), and iOS code in its own `Features/<Name>/` folder against the `Core/Interfaces.swift` protocols. Wire the new view into `BrownmellonApp.swift`'s `TabView`. Don't touch another feature's files — that's what kept the original three workstreams merge-conflict-free, and it still holds.
 
-`feature/voice-calendar` (Workstream A) scaffolded its own `Core/Interfaces.swift` at the **repo root** (`Core/`, `Features/Scheduling/`, `api/parse-intent.ts`, no `ios/`/`backend/` split and no `.xcodeproj` at all yet), which is a different layout from this worktree's `ios/Brownmellon/Core/` + `backend/`. These two will conflict structurally, not just textually, whenever they both land on `main` — someone needs to pick one layout before merging. A also changed the wake word from "Hey Brownmellon" to "Hey Dojo"; this worktree's copy hasn't been renamed to match. Separately, `main` itself picked up a scope change (Feature 5 facial recognition → OCR-based ad scam detection, Workstream C renamed Safety & Emergency) that doesn't touch this workstream's files.
+## What's mocked, and why
 
-## Backend is deployed
+- **`MockGlassesSession`** — real on-device text-to-speech (`AVSpeechSynthesizer`) for `speak`, the system photo picker for `capturePhoto`, and a stored transcript callback (`simulateTranscript(_:)`) for `startListening`/`stopListening` so Scheduling's wake-word path is exercisable without a mic. Swap for the real DAT-backed session once that lands — no other code should need to change, that's the point of the protocol.
+- **`MockCalendarService`** — in-memory, resets on relaunch. `GoogleCalendarService` is real and compiles clean against `GoogleSignIn-iOS` 7.1.0, but needs a Google Cloud OAuth client ID (PRD § Deployment) before it's usable.
+- **`MockSecureLocalStore`** — in-memory. `KeychainSecureLocalStore` is real (Keychain-backed, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) and is a straight swap once someone wants Setup's data to actually persist.
+- **Voice triggers** for Features 3–5 are manual button taps — Workstream A's `WakeWordListener`/`SchedulingCoordinator` only routes to Scheduling today. Extending it to dispatch "Hey Dojo, scan this" / "check this ad" to the other features' view models is the natural next step (their `scan()` / `checkAd()` methods are already designed as the integration seam).
+- **Feature 6's dedicated emergency phrase** (its own always-on listener, independent of the general wake-word pipeline per PRD § Feature 6) isn't implemented — that's real device/DAT work, not something to fake convincingly on Simulator. `EmergencyCallService` only covers placing the call once triggered.
 
-Production: **https://backend-five-dusky-36.vercel.app** (also connected to this GitHub repo — pushes to `main` will auto-deploy). The iOS app defaults to this URL (`BROWNMELLON_BACKEND_URL` in `project.yml`) since a physical device can't reach `localhost`.
+## Backend
 
-`GEMINI_API_KEY` is already set on the Vercel project (production) — the endpoint runs on Gemini now, not Claude (see `api/ocr.ts` header comment for why). Nothing further needed for the backend to work end-to-end.
+Production: **https://backend-five-dusky-36.vercel.app** (connected to this GitHub repo — pushes to `main` auto-deploy). The iOS app defaults to this URL (`BROWNMELLON_BACKEND_URL` in `project.yml` / `Info.plist`).
 
-## Running the backend locally
+Env vars on the Vercel project:
+- `GEMINI_API_KEY` — **already set**, used by `api/ocr.ts` and `api/scam-check.ts`.
+- `ANTHROPIC_API_KEY` — **not yet set**, needed by `api/parse-intent.ts` (Scheduling won't get real intents back until this is added). Run this yourself rather than pasting the key into chat:
+  ```bash
+  cd backend
+  vercel env add ANTHROPIC_API_KEY production
+  vercel --prod   # redeploy to pick it up
+  ```
+
+Running locally:
 
 ```bash
 cd backend
 npm install
-cp .env.example .env   # fill in GEMINI_API_KEY
-npm run dev             # vercel dev, serves api/ocr.ts on localhost:3000
+cp .env.example .env   # fill in GEMINI_API_KEY and ANTHROPIC_API_KEY
+npm run dev             # vercel dev, serves api/*.ts on localhost:3000
 ```
-
-Quick manual test once it's running:
 
 ```bash
-curl -X POST http://localhost:3000/api/ocr \
-  -H "Content-Type: application/json" \
-  -d "{\"mode\":\"read\",\"imageBase64\":\"$(base64 -i /path/to/a/photo.jpg)\"}"
+npx tsc --noEmit   # typecheck all three endpoints
 ```
 
-## Opening the iOS app
+## iOS app
 
-Requires full Xcode (not just Command Line Tools) — install from the App Store first if needed.
+Requires full Xcode (not just Command Line Tools).
 
 ```bash
 brew install xcodegen   # if not already installed
@@ -55,4 +88,19 @@ xcodegen generate
 open Brownmellon.xcodeproj
 ```
 
-Run on Simulator or a physical device. `AppointmentCardScanView` / `ReadToMeView` will prompt the photo picker in place of the glasses camera. Talks to the deployed backend by default — see `VisionBackendClient.baseURL` / `project.yml`'s `BROWNMELLON_BACKEND_URL` to point at `vercel dev` locally instead.
+Run on Simulator or a physical device — 5 tabs, one per feature area (Schedule / Scan Card / Read To Me / Check Ad / Setup). Talks to the deployed backend by default; point `BROWNMELLON_BACKEND_URL` at `vercel dev` locally instead if needed.
+
+```bash
+xcodebuild -project ios/Brownmellon.xcodeproj -scheme Brownmellon \
+  -destination 'platform=iOS Simulator,name=iPhone 17' test
+```
+
+Verified (2026-09-19): builds with zero errors/warnings against iOS 27.0, all `WakeWordDetectorTests` pass, and the app installs and launches on an iPhone 17 Simulator without crashing.
+
+## Known gaps
+
+- No real `GlassesSession` (Meta DAT wrapper) yet — the highest-risk shared piece, per PRD § Foundation.
+- Google Cloud OAuth client ID not set up — blocks real Calendar reads/writes.
+- Voice triggers for Vision (3–4) and Safety (5) aren't wired to the wake-word pipeline yet.
+- Feature 6's dedicated always-on emergency phrase isn't implemented.
+- Only one physical Ray-Ban Meta Gen 2 pair confirmed available for hardware testing (PRD § Known risks).

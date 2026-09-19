@@ -10,30 +10,45 @@ import PhotosUI
 ///  - `capturePhoto` opens the system photo picker so a developer can
 ///    hand it a sample appointment-card / document photo, standing in
 ///    for what the glasses camera would have captured.
-///  - `startListening` / `stopListening` are no-ops here — Workstream B's
-///    features are triggered by an explicit on-screen button for now
-///    (see `AppointmentCardScanView` / `ReadToMeView`), not by the real
-///    "Hey Brownmellon" keyword spotter, which is Workstream A's
-///    infrastructure. Swap this session out once that's ready to wire
-///    real voice triggers.
+///  - `startListening` / `stopListening` store the transcript callback and
+///    expose `simulateTranscript(_:)` so Workstream A's wake-word pipeline
+///    (`SchedulingCoordinator`, "Hey Dojo") is exercisable on Simulator —
+///    call it from a debug UI or a test in place of real mic input.
+///    Vision's own features (`AppointmentCardScanView` / `ReadToMeView`)
+///    still use an explicit on-screen button rather than the wake word.
+///    Swap this session out for the real DAT-backed one once that lands.
 @MainActor
 final class MockGlassesSession: NSObject, GlassesSession {
     private let synthesizer = AVSpeechSynthesizer()
     private var photoPickerContinuation: CheckedContinuation<UIImage, Error>?
+    private var onTranscript: ((String) -> Void)?
+    private(set) var isListening = false
+
+    /// Debug/demo hook — fires alongside real TTS so a screen with no
+    /// speaker can show what the glasses just said (e.g. `SchedulingView`).
+    var onSpeak: ((String) -> Void)?
 
     func speak(_ text: String) async {
+        onSpeak?(text)
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         synthesizer.speak(utterance)
     }
 
     func startListening(onTranscript: @escaping (String) -> Void) {
-        // No-op in the mock — see type doc. Real implementation streams
-        // DAT mic audio and calls onTranscript with recognized speech.
+        self.onTranscript = onTranscript
+        isListening = true
     }
 
     func stopListening() {
-        // No-op in the mock.
+        onTranscript = nil
+        isListening = false
+    }
+
+    /// Test/demo hook — pretend the wearer said something out loud.
+    /// No-op if nothing has called `startListening` yet.
+    func simulateTranscript(_ text: String) {
+        onTranscript?(text)
     }
 
     func capturePhoto() async throws -> UIImage {

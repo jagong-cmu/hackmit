@@ -23,7 +23,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Brownmellon uses the glasses camera to scan appointment cards and read documents aloud.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Brownmellon listens for "Hey Brownmellon" to respond to voice commands.</string>
+	<string>Brownmellon listens for "Hey Dojo" to respond to voice commands.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

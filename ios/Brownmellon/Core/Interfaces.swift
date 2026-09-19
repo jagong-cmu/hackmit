@@ -2,9 +2,8 @@ import Foundation
 import UIKit
 
 // Shared foundation interfaces (see PRD.md § Parallel workstreams).
-// Owned collectively — Workstream B (Vision & Documents) codes against
-// these plus the Mock implementations until the real GlassesSession
-// (DAT wrapper) and CalendarService land from Workstreams A/foundation.
+// Owned collectively across all three workstreams — code against these
+// plus the Mock implementations in Core/Mocks/.
 
 @MainActor
 protocol GlassesSession {
@@ -34,6 +33,7 @@ protocol CalendarService {
     /// Every write requires the caller to have already gotten spoken
     /// confirmation from the wearer — this protocol does not enforce
     /// that, the feature code does (see PRD design principles).
+    @discardableResult
     func createEvent(title: String, start: Date, end: Date?, location: String?) async throws -> CalendarEvent
 
     func todaysEvents() async throws -> [CalendarEvent]
