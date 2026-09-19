@@ -1,20 +1,19 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 
-// Constructed lazily: `new Anthropic()` throws if ANTHROPIC_API_KEY is
-// unset, and doing that at module load would take the whole function down
-// with an opaque 500 instead of the spoken FALLBACK the phone expects.
-let client: Anthropic | undefined;
-function anthropic(): Anthropic {
-  return (client ??= new Anthropic());
-}
+// Workstream A's backend endpoint (features 1–2). Same Gemini + retry pattern
+// as ocr.ts and scam-check.ts so the whole backend runs on one API key.
+// Stateless: the phone sends the current time + zone with every request,
+// because "tomorrow at two" is meaningless without them.
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = "gemini-3.6-flash";
 
 /** What the phone sends us. */
 const RequestSchema = z.object({
   command: z.string().min(1).max(500),
-  /** ISO 8601 with offset — "tomorrow at two" is meaningless without it. */
+  /** ISO 8601 with offset. */
   now: z.string(),
   /** IANA identifier, e.g. "America/New_York". */
   timeZone: z.string(),
@@ -30,6 +29,7 @@ const IntentSchema = z.object({
   /** Spoken aloud when intent is "unknown" — keep it short and kind. */
   reason: z.string().nullable(),
 });
+type Intent = z.infer<typeof IntentSchema>;
 
 const SYSTEM = `You turn one spoken command from an adult over 60 into a calendar action.
 
@@ -43,20 +43,39 @@ Rules:
 - Return start and end as ISO 8601 with a UTC offset. Leave end null unless a duration or end time was actually spoken.
 - The title is what the wearer will hear read back, so keep their own words: "Doctor Reyes" not "Appointment with Doctor Reyes".
 - The transcript comes from speech recognition and may be garbled. If you cannot tell what they want, return "unknown" — never guess a time. A wrong appointment is worse than a re-ask.
-- For "unknown", write reason as one short spoken sentence asking for what is missing, e.g. "What time should I set it for?". Leave it null for the other intents.`;
+- For "unknown", write reason as one short spoken sentence asking for what is missing, e.g. "What time should I set it for?". Leave it null for the other intents.
+
+Respond with ONLY a JSON object, no markdown fences, no commentary, matching exactly this shape:
+{"intent": "create_event" | "daily_briefing" | "unknown", "title": string | null, "start": string | null, "end": string | null, "reason": string | null}`;
 
 /** Spoken back verbatim, so it has to sound like a sentence. */
-const FALLBACK = {
-  intent: "unknown" as const,
+const FALLBACK: Intent = {
+  intent: "unknown",
   title: null,
   start: null,
   end: null,
   reason: "I'm having trouble right now. Please try again.",
 };
 
-// Node runtime (VercelRequest/VercelResponse), same as ocr.ts and
-// scam-check.ts — not the Web Request/Response API, which this project's
-// runtime doesn't hand to handlers (req.json() doesn't exist on it).
+// gemini-3.6-flash intermittently 503s with "high demand" (observed live from
+// ocr.ts) — short retry with backoff instead of surfacing it to the wearer.
+async function generateWithRetry(
+  params: Parameters<typeof ai.models.generateContent>[0],
+  attempts = 3,
+): Promise<Awaited<ReturnType<typeof ai.models.generateContent>>> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isTransient = /503|UNAVAILABLE|high demand/i.test(message);
+      if (!isTransient || i === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 300 * (i + 1)));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const json = (body: unknown, status = 200) => res.status(status).json(body);
 
@@ -71,39 +90,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { command, now, timeZone } = parsedBody.data;
 
   try {
-    const response = await anthropic().messages.parse({
-      model: "claude-opus-5",
-      max_tokens: 4096,
-      system: SYSTEM,
-      output_config: {
-        format: zodOutputFormat(IntentSchema),
-        // This is a short parse on a voice path where latency is the whole
-        // experience — low effort keeps the round trip tight.
-        effort: "low",
-      },
-      messages: [
-        {
-          role: "user",
-          content: `Current time: ${now}\nTime zone: ${timeZone}\n\nCommand: "${command}"`,
-        },
-      ],
+    const response = await generateWithRetry({
+      model: MODEL,
+      contents: [{ text: `${SYSTEM}\n\nCurrent time: ${now}\nTime zone: ${timeZone}\n\nCommand: "${command}"` }],
     });
 
-    if (response.stop_reason === "refusal") {
+    const raw = (response.text ?? "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(raw || "{}");
+    } catch {
       return json(FALLBACK);
     }
 
-    // parsed_output is null when the model's output failed schema validation.
-    return json(response.parsed_output ?? FALLBACK);
+    // The model's output is validated against the same schema the phone
+    // decodes — anything malformed becomes the spoken fallback, never a crash.
+    const parsed = IntentSchema.safeParse(candidate);
+    if (!parsed.success) {
+      console.error("parse-intent: model output failed schema", parsed.error.message, raw);
+      return json(FALLBACK);
+    }
+    return json(parsed.data);
   } catch (error) {
-    if (error instanceof Anthropic.RateLimitError) {
-      return json(FALLBACK, 429);
-    }
-    if (error instanceof Anthropic.APIError) {
-      console.error(`Claude API error ${error.status}:`, error.message);
-      return json(FALLBACK, 502);
-    }
     console.error("parse-intent failed:", error);
-    return json(FALLBACK, 500);
+    return json(FALLBACK, 502);
   }
 }
