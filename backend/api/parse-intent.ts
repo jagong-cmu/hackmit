@@ -1,8 +1,15 @@
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 
-const client = new Anthropic();
+// Constructed lazily: `new Anthropic()` throws if ANTHROPIC_API_KEY is
+// unset, and doing that at module load would take the whole function down
+// with an opaque 500 instead of the spoken FALLBACK the phone expects.
+let client: Anthropic | undefined;
+function anthropic(): Anthropic {
+  return (client ??= new Anthropic());
+}
 
 /** What the phone sends us. */
 const RequestSchema = z.object({
@@ -38,13 +45,6 @@ Rules:
 - The transcript comes from speech recognition and may be garbled. If you cannot tell what they want, return "unknown" — never guess a time. A wrong appointment is worse than a re-ask.
 - For "unknown", write reason as one short spoken sentence asking for what is missing, e.g. "What time should I set it for?". Leave it null for the other intents.`;
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
 /** Spoken back verbatim, so it has to sound like a sentence. */
 const FALLBACK = {
   intent: "unknown" as const,
@@ -54,19 +54,24 @@ const FALLBACK = {
   reason: "I'm having trouble right now. Please try again.",
 };
 
-export default async function handler(req: Request): Promise<Response> {
+// Node runtime (VercelRequest/VercelResponse), same as ocr.ts and
+// scam-check.ts — not the Web Request/Response API, which this project's
+// runtime doesn't hand to handlers (req.json() doesn't exist on it).
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const json = (body: unknown, status = 200) => res.status(status).json(body);
+
   if (req.method !== "POST") {
     return json({ error: "method_not_allowed" }, 405);
   }
 
-  const parsedBody = RequestSchema.safeParse(await req.json().catch(() => null));
+  const parsedBody = RequestSchema.safeParse(req.body ?? null);
   if (!parsedBody.success) {
     return json({ error: "bad_request", detail: parsedBody.error.message }, 400);
   }
   const { command, now, timeZone } = parsedBody.data;
 
   try {
-    const response = await client.messages.parse({
+    const response = await anthropic().messages.parse({
       model: "claude-opus-5",
       max_tokens: 4096,
       system: SYSTEM,
