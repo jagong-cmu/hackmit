@@ -65,7 +65,9 @@ final class MockGlassesSession: NSObject, GlassesSession {
 
 extension MockGlassesSession: PHPickerViewControllerDelegate {
     nonisolated func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
+        Task { @MainActor in
+            picker.dismiss(animated: true)
+        }
 
         guard let provider = results.first?.itemProvider,
               provider.canLoadObject(ofClass: UIImage.self) else {

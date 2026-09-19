@@ -6,6 +6,7 @@ import UIKit
 // these plus the Mock implementations until the real GlassesSession
 // (DAT wrapper) and CalendarService land from Workstreams A/foundation.
 
+@MainActor
 protocol GlassesSession {
     /// Speaks text aloud through the glasses' open-ear speaker.
     func speak(_ text: String) async
