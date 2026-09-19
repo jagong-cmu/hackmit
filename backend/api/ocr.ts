@@ -1,32 +1,47 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenAI } from '@google/genai';
 
 // Workstream B's backend endpoint (PRD.md § Parallel workstreams).
 // Stateless by design: the photo is sent for one inference call and is
 // never persisted here or anywhere server-side — only the structured
 // result goes back to the phone, which stores it locally (PRD § AI backend).
+//
+// Uses the Gemini API (not Claude) — the PRD's original "AI backend"
+// section says Claude direct, project-wide. This endpoint was switched
+// to Gemini at the user's request; flag/reconcile with the PRD if the
+// intent is to standardize on Gemini everywhere, or leave as a
+// per-workstream choice if intentional.
+//
+// extractAppointment deliberately does NOT use responseSchema/JSON mode:
+// tested live against the deployed endpoint and it 503'd 3/3 times
+// ("high demand") on the schema-constrained path specifically, while
+// plain-text generation on the same model succeeded every time in the
+// same window — looks like gemini-3.6-flash's structured-output path has
+// separate (currently tighter) capacity from plain generation. Asking
+// for JSON in the prompt and parsing it manually sidesteps that.
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = 'claude-sonnet-5';
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = 'gemini-3.6-flash';
 
-const APPOINTMENT_TOOL = {
-  name: 'record_appointment',
-  description: 'Records the appointment details found on a physical appointment card, if any are legible.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      found: {
-        type: 'boolean' as const,
-        description: 'true only if a date AND time are both clearly legible on the card',
-      },
-      title: { type: 'string' as const, description: 'short description, e.g. "Dentist appointment"' },
-      startISO8601: { type: 'string' as const, description: 'ISO 8601 date-time' },
-      endISO8601: { type: 'string' as const },
-      location: { type: 'string' as const },
-    },
-    required: ['found'],
-  },
-};
+// gemini-3.6-flash intermittently 503s with "high demand" even on plain
+// generation (observed directly against this endpoint, not hypothetical) —
+// short retry with backoff absorbs that instead of surfacing it to the app.
+async function generateWithRetry(
+  params: Parameters<typeof ai.models.generateContent>[0],
+  attempts = 3,
+): Promise<Awaited<ReturnType<typeof ai.models.generateContent>>> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isTransient = /503|UNAVAILABLE|high demand/i.test(message);
+      if (!isTransient || i === attempts - 1) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 300 * (i + 1)));
+    }
+  }
+  throw new Error('unreachable');
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -50,37 +65,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 async function extractAppointment(imageBase64: string) {
-  const message = await anthropic.messages.create({
+  const response = await generateWithRetry({
     model: MODEL,
-    max_tokens: 512,
-    tools: [APPOINTMENT_TOOL],
-    tool_choice: { type: 'tool', name: 'record_appointment' },
-    messages: [
+    contents: [
+      { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
       {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
-          {
-            type: 'text',
-            text:
-              "This is a photo of a physical appointment card. Extract the appointment details. Today's date " +
-              `is ${new Date().toISOString().slice(0, 10)}. If no year is printed, assume the nearest future ` +
-              'occurrence of the printed date. Only set found=true if a date and time are both clearly legible ' +
-              '— do not guess.',
-          },
-        ],
+        text:
+          "This is a photo of a physical appointment card. Extract the appointment details. Today's date " +
+          `is ${new Date().toISOString().slice(0, 10)}. If no year is printed, assume the nearest future ` +
+          'occurrence of the printed date. Only set "found" to true if a date and time are both clearly ' +
+          'legible — do not guess.\n\n' +
+          'Respond with ONLY a JSON object, no markdown fences, no commentary, matching exactly this shape:\n' +
+          '{"found": boolean, "title": string | null, "startISO8601": string | null, ' +
+          '"endISO8601": string | null, "location": string | null}',
       },
     ],
   });
 
-  const toolUse = message.content.find((block) => block.type === 'tool_use');
-  const input = (toolUse && 'input' in toolUse ? toolUse.input : {}) as {
-    found?: boolean;
-    title?: string;
-    startISO8601?: string;
-    endISO8601?: string;
-    location?: string;
-  };
+  const raw = (response.text ?? '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+
+  let input: { found?: boolean; title?: string; startISO8601?: string; endISO8601?: string; location?: string };
+  try {
+    input = JSON.parse(raw || '{}');
+  } catch {
+    // Model didn't return clean JSON — treat as "nothing found" rather than
+    // crashing the request; the ViewModel already handles this as a
+    // "couldn't read the card, try again" case (PRD confirm-before-write rule).
+    return { title: null, startISO8601: null, endISO8601: null, location: null };
+  }
 
   if (!input.found || !input.startISO8601) {
     return { title: null, startISO8601: null, endISO8601: null, location: null };
@@ -95,31 +107,18 @@ async function extractAppointment(imageBase64: string) {
 }
 
 async function readAloud(imageBase64: string) {
-  const message = await anthropic.messages.create({
+  const response = await generateWithRetry({
     model: MODEL,
-    max_tokens: 1024,
-    messages: [
+    contents: [
+      { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
       {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 } },
-          {
-            type: 'text',
-            text:
-              'Transcribe all the readable text in this photo exactly, in natural reading order, so it can be ' +
-              'read aloud to someone who cannot see it clearly. Plain text only — no commentary, no formatting, ' +
-              'no markdown. If there is no legible text, respond with an empty string.',
-          },
-        ],
+        text:
+          'Transcribe all the readable text in this photo exactly, in natural reading order, so it can be ' +
+          'read aloud to someone who cannot see it clearly. Plain text only — no commentary, no formatting, ' +
+          'no markdown. If there is no legible text, respond with an empty string.',
       },
     ],
   });
 
-  const text = message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => ('text' in block ? block.text : ''))
-    .join('\n')
-    .trim();
-
-  return { text };
+  return { text: (response.text ?? '').trim() };
 }
