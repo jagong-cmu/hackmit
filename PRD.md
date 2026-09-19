@@ -108,19 +108,93 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 - **Auth:** Google Sign-In only; single wearer, single device assumption for v1.
 - **Wake word:** "Hey Brownmellon" for general voice commands (features 1–4). The emergency trigger (feature 6) uses its own dedicated phrase and listener, independent of the general pipeline.
 
+## Deployment & device pairing
+
+**Apple Developer account:** a free Apple ID is sufficient for v1 — build and run on your own iPhone via Xcode at no cost. Tradeoffs to plan around: the install certificate expires every 7 days (rebuild from Xcode to renew), free accounts are capped at 3 sideloaded apps per device and 3 registered device UDIDs per rolling 7-day window, and entitlements like Push Notifications, Sign in with Apple, and iCloud aren't available (none of which Brownmellon needs — auth is Google Sign-In only). The $99/year Developer Program is only needed for TestFlight or App Store distribution, not for building or running the app itself.
+
+**Fastest iteration loop:** phone connected via USB or on the same Wi-Fi with wireless debugging → Xcode → Cmd+R. Builds and installs in under a minute for an app this size — this is the loop to use while actively building, not TestFlight.
+
+**Getting a build onto teammates' phones without a cable** (requires the paid account): archive → upload to App Store Connect → add up to 100 internal testers (no Apple review required for internal testing) → install via the TestFlight app. Expect a few minutes of build-processing latency — good for demo day, not for the live edit-test loop.
+
+**Meta's own developer registration (separate from Apple, required regardless of account tier):** register the app in Meta's Wearables Developer Center (a Managed Meta Account or org) to get a `MetaAppID` and `ClientToken`; these plus the Apple `TeamID` and an `AppLinkURLScheme` go in `Info.plist`. The URL scheme is how the Meta AI app hands device-access authorization back to Brownmellon. Note: Meta's docs state that general App Store publishing isn't open during this developer-preview period — only "testers within your organization/team" can receive builds, via Xcode sideload or TestFlight internal testing. This is a hard ceiling independent of Apple account tier.
+
+**Runtime pairing flow, in an actual setting:**
+1. Glasses are paired to a phone the normal consumer way, through Meta's own Meta AI app — this has to happen before any third-party app can access them.
+2. Brownmellon launches, requests device access, and hands off to the Meta AI app for a one-time permission grant (wearer or caregiver approves it, similar to any other OAuth-style consent screen).
+3. Brownmellon opens a DAT session claiming the camera/mic/speaker. Only one third-party app can hold this session at a time, so it can't run alongside another DAT app or Meta AI's own live features simultaneously.
+4. The phone must stay within Bluetooth range of the glasses (tens of feet) — all compute (mic streaming, camera capture, backend calls) happens on the phone, the glasses are a peripheral.
+5. **Open risk, test early:** per DAT's own changelog, backgrounding the phone app stops video decoding even though the camera transport keeps flowing at the transport level. Whether the "Hey Brownmellon" mic-only wake-word listener keeps working with the phone locked in a pocket is unconfirmed — this determines whether "hands-free, phone in pocket" is real or whether the phone needs to stay unlocked/foregrounded. Test in the first build session, since it affects the UX story for every voice-triggered feature.
+
 ## Design principles (apply across every feature)
 
 - Every calendar write requires spoken confirmation before it commits
 - Camera use is episodic (single-shot captures) — never continuous streaming, which is why several candidate features above are deferred
 - No feature collects, stores, or transmits data about anyone other than the wearer without that person's own consent
 
-## Suggested build order
+## Parallel workstreams (3 people, git worktrees)
 
-1. Voice scheduling + reminders + "Hey Brownmellon" keyword trigger — foundational; everything else reuses this infrastructure
-2. Daily briefing — trivial once #1 exists
-3. Appointment-card scanning + "Read this to me" — share the same photo-capture → backend-vision pipeline
-4. Facial recognition — enrollment flow, then runtime matching
-5. Emergency contact — most platform-constrained and safety-sensitive; build and test last, on real hardware with a real phone number
+The 6 features split into 3 vertical slices, grouped by shared pipeline rather than by feature number — each owns its own Swift files, its own backend endpoint file, and (where relevant) its own screen, so the three worktrees touch almost no common files after the foundation layer lands.
+
+### Foundation (build first, interfaces before implementations)
+
+A few pieces are genuinely shared — don't let building them for real block anyone. Agree on these protocol shapes immediately (they can live in one `Core/Interfaces.swift` committed in the first few minutes), then each of the three people codes against a mock implementation until the real one lands:
+
+```swift
+protocol GlassesSession {
+    func speak(_ text: String) async
+    func startListening(onTranscript: @escaping (String) -> Void)
+    func stopListening()
+    func capturePhoto() async throws -> UIImage
+}
+
+protocol CalendarService {
+    func createEvent(title: String, start: Date, end: Date?) async throws
+    func todaysEvents() async throws -> [CalendarEvent]
+}
+
+protocol SecureLocalStore {
+    func save<T: Codable>(_ value: T, forKey: String) throws
+    func load<T: Codable>(forKey: String) throws -> T?
+}
+```
+
+- **`GlassesSession` (DAT wrapper)** — the highest-risk, most-shared piece (covers mic streaming, camera capture, and speaker output through one session object — don't split this across people, it's one underlying connection). Recommend whoever's most comfortable with Bluetooth/hardware integration builds this first, in their own worktree, and merges it to `main` as soon as the interface is stable — even before every method is fully correct. Everyone else starts immediately against `MockGlassesSession` and swaps to the real one via a rebase once it lands.
+- **`CalendarService`** — needed by Workstream A (both features) and Workstream B (appointment-card scanning writes an event). Whoever gets to it first in Workstream A or B builds it for real; the other just consumes the interface.
+- **`SecureLocalStore`** — needed only by Workstream C; C builds it as part of its own work, no cross-workstream dependency.
+- **One-time setup, not per-workstream work** — do these once, in any worktree, before anyone needs them: Meta Wearables Developer Center registration (`MetaAppID`/`ClientToken`), Google Cloud project + OAuth consent screen (Testing mode), Vercel project + Claude API key.
+
+### Workstream A — Voice & Calendar
+
+**Owns:** Feature 1 (voice scheduling/reminders + "Hey Brownmellon" keyword trigger) and Feature 2 (daily briefing).
+**Files:** `Features/Scheduling/`, backend `api/parse-intent.ts`.
+**Depends on:** `GlassesSession` (mic), `CalendarService` (read + write) — mock until foundation lands.
+**Produces for others:** `CalendarService`, if this workstream builds it first.
+
+### Workstream B — Vision & Documents
+
+**Owns:** Feature 3 (appointment-card scanning) and Feature 4 ("read this to me") — grouped together because they share the same photo-capture → backend-vision pipeline.
+**Files:** `Features/Vision/`, backend `api/ocr.ts`.
+**Depends on:** `GlassesSession` (camera), `CalendarService` (write-only, for feature 3) — mock until foundation lands.
+**Produces for others:** nothing required by A or C.
+
+### Workstream C — Identity & Safety
+
+**Owns:** Feature 5 (facial recognition) and Feature 6 (emergency contact) — grouped together because both need the caregiver Setup Mode screen (face enrollment + emergency-contact configuration live in the same UI flow).
+**Files:** `Features/Identity/`, `Features/Setup/`, backend `api/face-embed.ts`.
+**Depends on:** `GlassesSession` (camera + mic), `SecureLocalStore` (builds this itself) — mock `GlassesSession` until foundation lands. Telephony (`tel:` call placement) is native iOS, no dependency on anyone.
+**Produces for others:** nothing required by A or B.
+
+### Suggested worktree setup
+
+```bash
+git worktree add ../hackmit-voice-calendar -b feature/voice-calendar
+git worktree add ../hackmit-vision-docs -b feature/vision-documents
+git worktree add ../hackmit-identity-safety -b feature/identity-safety
+```
+
+**Merge order:** foundation interfaces + whichever real implementation (DAT wrapper, Calendar service) lands first → `main`, immediately, even partially done. Then each workstream rebases onto `main` periodically to pick up the real implementations as they replace the mocks. Feature branches merge to `main` independently as they're demo-ready — there's no required merge order between A, B, and C themselves, since they don't touch each other's files.
+
+**Within each workstream**, the original single-track build order still applies: Workstream A builds feature 1 before feature 2 (2 reuses 1's trigger infra); Workstream C builds feature 5's enrollment flow before feature 6, since Setup Mode's UI shell is shared between them and easiest to build once, on the first feature.
 
 ## Known risks / open items
 
