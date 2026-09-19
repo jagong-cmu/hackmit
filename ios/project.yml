@@ -1,0 +1,59 @@
+name: Brownmellon
+options:
+  bundleIdPrefix: com.brownmellon
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: 7.1.0
+
+targets:
+  Brownmellon:
+    type: application
+    platform: iOS
+    sources:
+      - path: Brownmellon
+    dependencies:
+      - package: GoogleSignIn
+        product: GoogleSignIn
+    info:
+      path: Brownmellon/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards and read documents aloud."
+        NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Brownmellon\" to respond to voice commands."
+        # Points the app at the deployed backend by default — required on a
+        # physical device, since "localhost" there means the phone itself,
+        # not your Mac. Override at build time if you're running `vercel dev`
+        # locally instead (see VisionBackendClient.baseURL / README.md).
+        BROWNMELLON_BACKEND_URL: https://backend-five-dusky-36.vercel.app
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.brownmellon.app
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+
+# Note (Workstream B): GoogleSignIn is here because GoogleCalendarService
+# needs it (shared foundation — see PRD.md § Foundation). The real Meta
+# DAT SDK belongs to the GlassesSession implementation, also shared
+# foundation but not yet built — the app still runs against
+# MockGlassesSession until that lands and this file gets a second
+# `packages:` entry for it.
+#
+# GoogleCalendarService itself isn't usable yet either — it needs a
+# Google Cloud OAuth client ID that doesn't exist yet (PRD § Deployment).
+# MockCalendarService is still what's actually wired up in BrownmellonApp.
+#
+# Regenerate the .xcodeproj after any change to this file:
+#   cd ios && xcodegen generate
