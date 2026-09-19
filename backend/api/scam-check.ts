@@ -11,19 +11,25 @@ import { GoogleGenAI } from '@google/genai';
 // so it cannot prove an image itself was AI-generated — the response has to
 // say that plainly rather than imply more certainty than the method supports.
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Constructed lazily, matching api/parse-intent.ts: building the client at
+// module load throws when GEMINI_API_KEY is unset, which takes the whole
+// function down with an opaque 500 instead of this endpoint's own fallback.
+let client: GoogleGenAI | undefined;
+function ai(): GoogleGenAI {
+  return (client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }));
+}
 const MODEL = 'gemini-3.6-flash';
 
 // Same transient-503 behavior observed against gemini-3.6-flash's
 // schema-constrained path in api/ocr.ts — plain-text generation + manual
 // JSON parsing sidesteps it here too.
 async function generateWithRetry(
-  params: Parameters<typeof ai.models.generateContent>[0],
+  params: Parameters<GoogleGenAI['models']['generateContent']>[0],
   attempts = 3,
-): Promise<Awaited<ReturnType<typeof ai.models.generateContent>>> {
+): Promise<Awaited<ReturnType<GoogleGenAI['models']['generateContent']>>> {
   for (let i = 0; i < attempts; i++) {
     try {
-      return await ai.models.generateContent(params);
+      return await ai().models.generateContent(params);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const isTransient = /503|UNAVAILABLE|high demand/i.test(message);

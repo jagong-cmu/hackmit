@@ -15,6 +15,12 @@ final class MockCalendarService: CalendarService {
 
     func todaysEvents() async throws -> [CalendarEvent] {
         let calendar = Calendar.current
-        return events.filter { calendar.isDateInToday($0.start) }
+        return events
+            .filter { calendar.isDateInToday($0.start) }
+            // Chronological, per the protocol contract — the daily briefing
+            // reads these out in order. GoogleCalendarService gets this from
+            // the server (orderBy=startTime); in-memory events are in
+            // insertion order, which is not the same thing.
+            .sorted { $0.start < $1.start }
     }
 }

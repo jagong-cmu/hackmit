@@ -12,6 +12,9 @@ final class AdScamCheckViewModel: ObservableObject {
         case capturing
         case checking
         case done(ScamCheckBackendClient.Result)
+        /// OCR found no text to assess. Distinct from `.done` with low risk:
+        /// we failed to read the ad, which is not the same as judging it safe.
+        case unreadable(String)
         case failed(String)
     }
 
@@ -34,7 +37,15 @@ final class AdScamCheckViewModel: ObservableObject {
             let photo = try await glasses.capturePhoto()
             state = .checking
             let result = try await backend.check(photo)
-            state = .done(result)
+            // Empty extractedText is the backend's FALLBACK — it could not read
+            // the ad. Its scamRisk is "low" only because the enum has no other
+            // resting value, so showing it as `.done` would render a green
+            // "Low risk" checkmark for an ad nobody ever read. For a feature
+            // warning vulnerable users about fraud, failure must not look like
+            // safety. The spoken summary already draws this distinction.
+            state = result.extractedText.isEmpty
+                ? .unreadable(result.safeAction)
+                : .done(result)
             await glasses.speak(spokenSummary(for: result))
         } catch {
             state = .failed(String(describing: error))

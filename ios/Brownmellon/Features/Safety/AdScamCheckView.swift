@@ -15,7 +15,7 @@ struct AdScamCheckView: View {
                 .font(.headline)
 
             switch viewModel.state {
-            case .idle, .failed, .done:
+            case .idle, .failed, .done, .unreadable:
                 Button("Check an ad") {
                     Task { await viewModel.checkAd() }
                 }
@@ -42,6 +42,19 @@ struct AdScamCheckView: View {
 
                     Text(result.safeAction)
                         .padding(.top, 4)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            case .unreadable(let message):
+                VStack(alignment: .leading, spacing: 8) {
+                    // Neutral, never green — this is "I couldn't read it",
+                    // not "it's fine".
+                    Label("Couldn't read this ad", systemImage: "questionmark.circle.fill")
+                        .font(.title3.bold())
+                        .foregroundStyle(.secondary)
+
+                    Text(message).padding(.top, 4)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
