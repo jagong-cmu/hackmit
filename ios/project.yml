@@ -2,7 +2,7 @@ name: Brownmellon
 options:
   bundleIdPrefix: com.brownmellon
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "17.2"   # floor set by the MWDAT frameworks
   createIntermediateGroups: true
 
 settings:
@@ -15,6 +15,11 @@ packages:
   GoogleSignIn:
     url: https://github.com/google/GoogleSignIn-iOS
     from: 7.1.0
+  # Meta Wearables Device Access Toolkit. Package.swift only exists on tagged
+  # releases (not main), and Meta's own sample pins exactVersion — do the same.
+  MetaWearablesDAT:
+    url: https://github.com/facebook/meta-wearables-dat-ios
+    exactVersion: 0.9.0
 
 targets:
   Brownmellon:
@@ -25,6 +30,10 @@ targets:
     dependencies:
       - package: GoogleSignIn
         product: GoogleSignIn
+      - package: MetaWearablesDAT
+        product: MWDATCore
+      - package: MetaWearablesDAT
+        product: MWDATCamera
     info:
       path: Brownmellon/Info.plist
       properties:
@@ -33,6 +42,25 @@ targets:
           - UIInterfaceOrientationPortrait
         NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards and read documents aloud."
         NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Dojo\" to respond to voice commands."
+        NSSpeechRecognitionUsageDescription: "Brownmellon transcribes what you say after \"Hey Dojo\" so it can act on it. Recognition runs on-device."
+        NSBluetoothAlwaysUsageDescription: "Needed to connect to your Ray-Ban Meta glasses."
+        # --- Meta DAT requirements (mirrors the SDK's getting-started guide) ---
+        # Meta AI hands registration/permission results back via this scheme.
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER)
+            CFBundleURLSchemes: [brownmellon]
+        LSApplicationQueriesSchemes: [fb-viewapp]
+        UISupportedExternalAccessoryProtocols: [com.meta.ar.wearable]
+        # `audio` keeps the "Hey Dojo" mic listener alive when the phone is in
+        # a pocket — PRD § Deployment lists this as the open risk to test first.
+        UIBackgroundModes: [bluetooth-central, bluetooth-peripheral, external-accessory, audio]
+        MWDAT:
+          AppLinkURLScheme: "brownmellon://"
+          # "0" = Developer Mode (enabled in the Meta AI app), which is all a
+          # sideloaded hackathon build needs. A real MetaAppID/ClientToken from
+          # the Wearables Developer Center is only required for release channels.
+          MetaAppID: "0"
         # Points the app at the deployed backend by default — required on a
         # physical device, since "localhost" there means the phone itself,
         # not your Mac. Override at build time if you're running `vercel dev`

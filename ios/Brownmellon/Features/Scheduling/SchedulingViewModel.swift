@@ -17,8 +17,11 @@ final class SchedulingViewModel: ObservableObject {
         let intents = IntentClient(endpoint: backendBaseURL.appendingPathComponent("api/parse-intent"))
         self.coordinator = SchedulingCoordinator(glasses: glasses, calendar: calendar, intents: intents)
 
+        let showResponse: (String) -> Void = { [weak self] text in self?.lastResponse = text }
         if let mock = glasses as? MockGlassesSession {
-            mock.onSpeak = { [weak self] text in self?.lastResponse = text }
+            mock.onSpeak = showResponse
+        } else if let real = glasses as? DATGlassesSession {
+            real.onSpeak = showResponse
         }
     }
 

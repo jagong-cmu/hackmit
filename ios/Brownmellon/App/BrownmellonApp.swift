@@ -1,16 +1,35 @@
 import SwiftUI
+import MWDATCore
 
 @main
 struct BrownmellonApp: App {
-    // Shared foundation mocks — see Core/Mocks. Swap these for the real
-    // GlassesSession (DAT), CalendarService (Google Calendar, once OAuth
-    // is set up — PRD § Deployment), and SecureLocalStore (Keychain, see
-    // Core/KeychainSecureLocalStore.swift) once each is ready to wire in.
+    // GlassesSession: real Ray-Ban Meta (DAT + Bluetooth audio) on a physical
+    // phone, photo-picker/TTS mock on Simulator where there's no Bluetooth.
+    // CalendarService / SecureLocalStore are still mocks — swap for
+    // GoogleCalendarService (needs an OAuth client ID, PRD § Deployment) and
+    // KeychainSecureLocalStore when ready.
     // Plain properties, not @StateObject: these are session/service
     // objects, not view state — the ViewModels are the ObservableObjects.
-    private let glasses = MockGlassesSession()
+    private let glasses: GlassesSession
+    private let datSession: DATGlassesSession?
     private let calendarService = MockCalendarService()
     private let secureStore = MockSecureLocalStore()
+
+    init() {
+        #if targetEnvironment(simulator)
+        glasses = MockGlassesSession()
+        datSession = nil
+        #else
+        do {
+            try Wearables.configure()
+        } catch {
+            assertionFailure("Wearables SDK failed to configure: \(error)")
+        }
+        let session = DATGlassesSession()
+        glasses = session
+        datSession = session
+        #endif
+    }
 
     private var backendBaseURL: URL {
         if let override = Bundle.main.object(forInfoDictionaryKey: "BROWNMELLON_BACKEND_URL") as? String,
@@ -23,6 +42,13 @@ struct BrownmellonApp: App {
     var body: some Scene {
         WindowGroup {
             TabView {
+                if let datSession {
+                    NavigationStack {
+                        GlassesView(session: datSession)
+                    }
+                    .tabItem { Label("Glasses", systemImage: "eyeglasses") }
+                }
+
                 SchedulingView(glasses: glasses, calendar: calendarService, backendBaseURL: backendBaseURL)
                     .tabItem { Label("Schedule", systemImage: "calendar") }
 
@@ -39,6 +65,11 @@ struct BrownmellonApp: App {
                     EmergencyContactSetupView(store: secureStore)
                 }
                 .tabItem { Label("Setup", systemImage: "person.crop.circle.badge.exclamationmark") }
+            }
+            // Meta AI hands registration / permission results back through the
+            // brownmellon:// scheme declared in project.yml.
+            .onOpenURL { url in
+                Task { await DATGlassesSession.handle(url: url) }
             }
         }
     }
