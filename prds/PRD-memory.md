@@ -6,9 +6,9 @@
 
 ## Brief for the implementing agent
 
-Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Feature 1 (so you don't collide with "remind me") and § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) § 1 and § 3, `ios/Brownmellon/Features/Scheduling/SchedulingCoordinator.swift` (`spokenDateTime` — reuse it), `ios/Brownmellon/Features/Scheduling/IntentClient.swift` and `backend/api/parse-intent.ts` (the request/response style your recall endpoint copies), `ios/Brownmellon/Features/Vision/VisionBackendClient.swift` (you call `readAloud` for the parking sign), `ios/Brownmellon/Features/Setup/EmergencyContactSetupViewModel.swift` (persistence pattern).
+Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Feature 1 (so you don't collide with "remind me") and § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) § 1, 2, 3, 7, `ios/Brownmellon/Core/VoiceAssistant.swift` (from the foundation — how handlers are registered), `ios/Brownmellon/Features/Scheduling/SchedulingCoordinator.swift` (`spokenDateTime` — reuse it), `ios/Brownmellon/Features/Scheduling/IntentClient.swift` and `backend/api/parse-intent.ts` (Gemini + zod-validated JSON; the request/response style your recall endpoint copies), `ios/Brownmellon/Features/Vision/VisionBackendClient.swift` (you call `readAloud` for the parking sign), `ios/Brownmellon/Features/Setup/EmergencyContactSetupViewModel.swift` (persistence pattern).
 
-Own: `ios/Brownmellon/Features/Memory/**`, `ios/BrownmellonTests/Memory/**`, `backend/api/recall.ts`, plus one line each in `App/BrownmellonApp.swift` and `backend/.env.example` (none needed — reuses `ANTHROPIC_API_KEY`). Do not modify `api/parse-intent.ts` or `IntentClient.swift`.
+Own: `ios/Brownmellon/Features/Memory/**`, `ios/BrownmellonTests/Memory/**`, `backend/api/recall.ts`, `backend/lib/recall*.ts` and `backend/tests/recall*.test.ts` if you split pure logic out for testing, plus the single wiring lines in `App/BrownmellonApp.swift` named in the foundation doc § 7. Reuses `GEMINI_API_KEY` — nothing to add to `.env.example`. Do not modify `api/parse-intent.ts` or `IntentClient.swift`.
 
 Verify: `cd ios && xcodegen generate && xcodebuild ... test` (README § iOS app); `cd backend && npx tsc --noEmit`. Zero warnings.
 
@@ -73,7 +73,7 @@ Distance: `CLLocation.distance(from:)` → spoken in feet under 1000 ft, otherwi
 
 **"Take me to my car" / "directions to my car"** → `MKMapItem(placemark:)` for the saved coordinate, `openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])`, and speak "Opening walking directions on your phone." If no coordinate: "I don't have your car's location saved."
 
-**General recall** goes to the new backend `api/recall.ts` (Claude), which grounds an answer in the wearer's own notes:
+**General recall** goes to the new backend `api/recall.ts` (Gemini, same as every other endpoint), which grounds an answer in the wearer's own notes:
 
 - Send the question plus the **most recent 100 notes** (id, text, kind, createdAt ISO with offset, signText). Notes are the wearer's own data; the call is stateless and nothing is persisted server-side (PRD § AI backend). Never send coordinates — they aren't needed to answer and shouldn't leave the phone.
 - Response: `{ answer: string, matchedNoteIds: string[] }`. `answer` is spoken verbatim, so the backend prompt must produce one or two spoken sentences that include *when* ("This morning at nine you told me…"). If nothing matches: exactly `"I don't have a note about that."` and an empty `matchedNoteIds`.
@@ -126,7 +126,7 @@ This parser is where the tests live. ASR garbles things — include variants lik
 
 ### Backend `api/recall.ts`
 
-Copy the structure of `api/parse-intent.ts` exactly (Web `Request`/`Response` handler, `zod` request/response schemas, `client.messages.parse` with `zodOutputFormat`, `effort: "low"`, same error → `FALLBACK` handling, same `ANTHROPIC_API_KEY`). Request:
+Copy the structure of `api/parse-intent.ts` exactly (`VercelRequest`/`VercelResponse` handler, `GoogleGenAI` with `gemini-3.6-flash`, the `generateWithRetry` helper, `zod` request schema *and* zod validation of the model's JSON output, fence-stripping, same error → `FALLBACK` handling, same `GEMINI_API_KEY`). Request:
 
 ```ts
 { question: string, now: string /* ISO w/ offset */, timeZone: string,
@@ -154,7 +154,13 @@ ios/BrownmellonTests/Memory/
 backend/api/recall.ts
 ```
 
-Wiring in `BrownmellonApp`: `private let memory = MemoryCommandHandler(glasses:, store:, vision: VisionBackendClient(), recall: RecallClient(endpoint:))`; pass in `handlers:`; `MemoryView(viewModel:)` as a tab ("Memory", `brain.head.profile`).
+Wiring in `BrownmellonApp`: `private let memory = MemoryCommandHandler(glasses:, store:, vision: VisionBackendClient(), recall: RecallClient(endpoint:))`; pass in the `VoiceAssistant` `handlers:` (foundation § 7); `MemoryView(viewModel:)` as a tab ("Memory", `brain.head.profile`).
+
+**Voice-path tests (required):** build a `VoiceAssistant` with `MockGlassesSession`, `MockSecureLocalStore`, a stub `VisionBackendClient`-shaped dependency and a stub recall client (inject via protocols — `RecallClient` and the OCR call must be behind protocols so tests never hit the network), then drive it with `simulateTranscript`:
+- `"hey dojo remember i parked in section b"` → `onSpeak` receives "Got it. I'll remember: I parked in section B." and the store holds one `.parking` note.
+- `"hey dojo where did i park"` → speaks the recall sentence including "just now."
+- `"hey dojo remind me to take my pills at 8"` → the memory handler returns `false` (assert the stubbed intent path was reached).
+These prove the feature is voice-driven end to end, minus ASR.
 
 ### Simulator / demo
 
@@ -172,7 +178,8 @@ Type into the Memory tab's field: `remember I parked in section B` → hear the 
 
 - **ASR of place words** — "section B" may arrive as "section be." Acceptable: the wearer hears exactly what was captured in the confirmation and can re-say it.
 - **GPS in parking garages** is often unavailable — hence the photo of the sign is the primary parking signal and the fix is best-effort with a hard 5 s timeout.
-- **Recall latency** — Claude round-trip on the general path; Feature 1 has the same characteristic. Keep notes ≤ 100 and the prompt short.
+- **Recall latency** — one Gemini round-trip on the general path; Feature 1 has the same characteristic. Keep notes ≤ 100 and the prompt short.
+- **No local API key** — `GEMINI_API_KEY` is only set on the Vercel project. Verify the endpoint with `npx tsc --noEmit` plus unit tests of the pure parsing/validation logic (extract it into `backend/lib/`, run with `node --test`); live behavior is checked after merge to `main` deploys it.
 - **Location privacy** — coordinates never leave the phone (not sent to `api/recall.ts`); the handler must be written so this is obvious in code review.
 
 ## Deferred
@@ -181,5 +188,5 @@ Type into the Memory tab's field: `remember I parked in section B` → hear the 
 |---|---|
 | Spoken turn-by-turn to the car | `MKDirections` steps read through the glasses is feasible; validate the open-ear audio outdoors first (same note as "audio wayfinding" in `PRD.md`) |
 | Caregiver visibility of notes | Needs the consent/dashboard design from the v2 proposal |
-| On-device retrieval (NaturalLanguage embeddings) instead of the backend | Would make general recall offline; worth it once the phrasing quality of the Claude path is established |
+| On-device retrieval (NaturalLanguage embeddings) instead of the backend | Would make general recall offline; worth it once the phrasing quality of the backend path is established |
 | Notes feeding the daily briefing ("you said your car is in section B") | Cross-feature; after both are stable |

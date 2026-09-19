@@ -6,7 +6,7 @@
 
 ## Brief for the implementing agent
 
-Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) (all of it — you consume every part), `ios/Brownmellon/Core/Interfaces.swift`, `ios/Brownmellon/Core/Mocks/MockGlassesSession.swift`, `ios/Brownmellon/Features/Setup/EmergencyContactSetupViewModel.swift` (the Setup/persistence pattern to copy), `ios/Brownmellon/Features/Scheduling/WakeWordDetector.swift` (`normalize` — commands arrive already normalized).
+Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) (all of it — you consume every part), `ios/Brownmellon/Core/Interfaces.swift`, `ios/Brownmellon/Core/Mocks/MockGlassesSession.swift` (`simulateAudio`, `isSpeaking`), `ios/Brownmellon/Core/DATGlassesSession.swift` (read `startAudioTap` / `beginRecognition` so you know what the real tap delivers — you don't edit this file), `ios/Brownmellon/Core/VoiceAssistant.swift` (handler registration), `ios/Brownmellon/Features/Setup/EmergencyContactSetupViewModel.swift` (the Setup/persistence pattern to copy), `ios/Brownmellon/Features/Scheduling/WakeWordDetector.swift` (`normalize` — commands arrive already normalized).
 
 Own these paths and nothing else: `ios/Brownmellon/Features/Hearing/**`, `ios/BrownmellonTests/Hearing/**`, `ios/BrownmellonTests/Fixtures/Sounds/**`, plus one line each in `App/BrownmellonApp.swift` and `Features/Setup/SetupHomeView.swift`. **No backend.** This feature must never make a network call.
 
@@ -77,7 +77,9 @@ Keep a rolling log of the last 60 s of *labels* (never audio): `(identifier, con
 
 ### Audio path
 
-The glasses present to iOS as a Bluetooth headset; the real `GlassesSession` will run one `AVAudioEngine` on an `AVAudioSession` configured `.playAndRecord` with `.allowBluetooth` (renamed `.allowBluetoothHFP` in newer SDKs) so the HFP mic is the input route, and fan `inputNode` tap buffers out to consumers. This feature is one consumer, via `glasses.startAudioTap`. **You do not touch AVAudioSession or AVAudioEngine** — that belongs to the session. On Simulator, `MockGlassesSession.simulateAudio(fileURL:)` is your input.
+The glasses present to iOS as a Bluetooth headset. The real `DATGlassesSession` (already in the repo) runs one `AVAudioEngine` on an `AVAudioSession` configured `.playAndRecord` with `.allowBluetoothHFP` so the HFP mic is the input route, installs a single `inputNode` tap (1024-frame buffers in `inputNode.inputFormat(forBus: 0)`), and — after the foundation change — fans those buffers out to both the speech recognizer and `startAudioTap` consumers. This feature is one consumer. **You do not touch AVAudioSession or AVAudioEngine** — that belongs to the session. On Simulator, `MockGlassesSession.simulateAudio(fileURL:)` is your input.
+
+Two properties of the real tap to design for: (1) Apple ends a speech-recognition task about every minute and the session re-begins it; with the foundation's fan-out the engine keeps running across that boundary, but be robust to a short gap or a format change anyway — recreate the `SNAudioStreamAnalyzer` if the incoming buffer format differs from the one it was created with. (2) The callback is on the audio thread: hop to your own serial queue before analyzing, and never touch `@MainActor` state from it.
 
 Known constraint to test first on hardware: HFP mic audio is narrowband (8 kHz CVSD) or wideband (16 kHz mSBC). The classifier was trained on full-band audio; band-limiting will reduce confidence, especially for high-pitched beeps. Everything you need (smoke alarm ~3 kHz, doorbell, ringer) sits below the 4 kHz Nyquist limit even in the narrowband case, so expect it to work with lower margins — which is why the threshold and the two-window rule are settings, not constants. If the glasses mic proves unusable, the fallback is the phone's own mic — but iOS has a single input route at a time, so that is an either/or decision for the real session, not something this feature can do on its own.
 
@@ -120,7 +122,9 @@ ios/BrownmellonTests/Fixtures/Sounds/
     smoke_alarm.wav, doorbell.wav, knock.wav, silence.wav     mono, 16 kHz, ≤ 3 s, ≤ 200 KB each; record them yourself or use CC0 clips — note the source in a SOURCES.txt
 ```
 
-`SoundAlertMonitor` is created once in `BrownmellonApp` (plain property, like `glasses`) and started at launch when settings say enabled. It is also passed in the `handlers:` array for 8b.
+`SoundAlertMonitor` is created once in `BrownmellonApp` (plain property, like `glasses`) and started at launch when settings say enabled. It is also passed in the `VoiceAssistant` `handlers:` array for 8b (foundation § 7).
+
+**Voice-path test (required):** a test that builds a `VoiceAssistant` with `MockGlassesSession` and the monitor as a handler, calls `simulateTranscript("hey dojo what was that")` after seeding `RecentSoundLog` with a doorbell 10 s ago, and asserts the mock's `onSpeak` received "About ten seconds ago it sounded like a doorbell." This is the proof that the feature is voice-driven, not button-driven.
 
 ### Decider rules (make these the test names)
 

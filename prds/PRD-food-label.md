@@ -8,9 +8,9 @@ This is the two features from the brainstorm ("read tiny text" and "dietary rest
 
 ## Brief for the implementing agent
 
-Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Feature 4 and § Feature 5 (the pattern you're specializing) and § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) § 1, 3, 5, `backend/api/scam-check.ts` (copy its structure exactly for the new endpoint — retry helper, plain-text-then-parse JSON, `FALLBACK`), `ios/Brownmellon/Features/Safety/ScamCheckBackendClient.swift` and `AdScamCheckViewModel.swift` (client + view-model shape to copy), `ios/Brownmellon/Features/Vision/ReadToMeViewModel.swift` (what "read this to me" does today — you don't change it), `ios/Brownmellon/Features/Setup/EmergencyContactSetupView*.swift` (caregiver Setup pattern).
+Read first: [`../README.md`](../README.md), [`../PRD.md`](../PRD.md) § Feature 4 and § Feature 5 (the pattern you're specializing) and § Design principles, [`PRD-foundation-v2.md`](PRD-foundation-v2.md) § 1, 2, 3, 4, 6, 7, `ios/Brownmellon/Core/VoiceAssistant.swift` (handler registration) and `ios/Brownmellon/Core/Mocks/MockGlassesSession.swift` (`stubbedPhoto` for tests), `backend/api/scam-check.ts` (copy its structure exactly for the new endpoint — retry helper, plain-text-then-parse JSON, `FALLBACK`), `ios/Brownmellon/Features/Safety/ScamCheckBackendClient.swift` and `AdScamCheckViewModel.swift` (client + view-model shape to copy), `ios/Brownmellon/Features/Vision/ReadToMeViewModel.swift` (what "read this to me" does today — you don't change it), `ios/Brownmellon/Features/Setup/EmergencyContactSetupView*.swift` (caregiver Setup pattern).
 
-Own: `ios/Brownmellon/Features/Nutrition/**`, `ios/BrownmellonTests/Nutrition/**`, `backend/api/food-label.ts`, plus one line each in `App/BrownmellonApp.swift` and `Features/Setup/SetupHomeView.swift`. Reuses `GEMINI_API_KEY` — nothing to add to `.env.example`.
+Own: `ios/Brownmellon/Features/Nutrition/**`, `ios/BrownmellonTests/Nutrition/**`, `backend/api/food-label.ts`, `backend/lib/foodLabel*.ts` and `backend/tests/foodLabel*.test.ts` if you split pure logic out for testing, plus the single wiring lines in `App/BrownmellonApp.swift` (foundation § 7) and one `NavigationLink` in `Features/Setup/SetupHomeView.swift`. Reuses `GEMINI_API_KEY` — nothing to add to `.env.example`. There is no local API key: verify the endpoint with `npx tsc --noEmit` and `node --test` on the pure response-normalization logic; live behavior is checked after merge to `main` deploys it.
 
 Verify: `cd ios && xcodegen generate && xcodebuild ... test` (README § iOS app); `cd backend && npx tsc --noEmit`. Zero warnings.
 
@@ -199,7 +199,13 @@ ios/BrownmellonTests/Nutrition/
 backend/api/food-label.ts
 ```
 
-Wiring in `BrownmellonApp`: `private let foodLabel = FoodLabelViewModel(glasses:, store:)`; `handlers:` includes it; tab "Check Food"; `SetupHomeView` link "Diet".
+Wiring in `BrownmellonApp`: `private let foodLabel = FoodLabelViewModel(glasses:, store:)`; the `VoiceAssistant` `handlers:` includes it (foundation § 7); tab "Check Food"; `SetupHomeView` link "Diet".
+
+**Voice-path tests (required):** the backend client must sit behind a protocol so tests inject a stub returning a fixture `FoodLabelResult`. Build a `VoiceAssistant` with `MockGlassesSession` (`stubbedPhoto` set to any `UIImage`), `MockSecureLocalStore` holding a low-sodium + peanut-allergy profile, and the view model as a handler; drive with `simulateTranscript`:
+- `"hey dojo can i eat this"` with the soup fixture → `onSpeak` receives the doesNotFit script (assert it contains "doesn't fit your low-sodium diet" and "two and a half servings").
+- `"hey dojo read the ingredients"` immediately after → no second `capturePhoto` (count calls on the mock or stub) and the ingredients are spoken.
+- `"hey dojo read this to me"` → handler returns `false` (Feature 4 keeps it).
+These prove the feature is voice-driven end to end, minus ASR.
 
 ### Simulator / demo
 

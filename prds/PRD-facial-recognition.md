@@ -90,7 +90,7 @@ Lives in the existing **Setup** tab alongside emergency contacts (`Features/Setu
 Every camera feature in v1 (`api/ocr.ts`, `api/scam-check.ts`) is "one photo → one stateless LLM vision call → JSON." It is tempting to add `api/who-is-this.ts` in the same shape and send the enrolled reference photos alongside the new one. **This does not work, and not for a technical reason:**
 
 - **Claude** is deliberately trained not to identify real people from their facial features, and Anthropic's usage policy restricts biometric identification. It will decline the matching step.
-- **Gemini** (what both camera endpoints actually call today — `api/ocr.ts` and `api/scam-check.ts` moved to `gemini-3.6-flash` in `955a8c8`; only `api/parse-intent.ts` still uses Claude) has the same trained refusal for identifying real people in photos, and Google Cloud Vision deliberately ships face *detection* but has never offered face *recognition*.
+- **Gemini** (what the entire backend calls today — all three endpoints run on `gemini-3.6-flash` since `eeaf0fb`) has the same trained refusal for identifying real people in photos, and Google Cloud Vision deliberately ships face *detection* but has never offered face *recognition*.
 
 This is a policy boundary the model providers chose on purpose, and it happens to push the design toward the right answer: the recognition step must be a dedicated face-embedding model, and there is no reason for it to live anywhere but on the phone.
 

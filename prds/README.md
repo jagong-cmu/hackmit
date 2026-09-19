@@ -6,7 +6,7 @@ Each document is written to be handed to a fresh implementing agent with no othe
 |---|---|---|---|
 | [`PRD-foundation-v2.md`](PRD-foundation-v2.md) | Shared interface changes (handler hook, audio tap, image downscale, plist keys, Setup menu) | none | — |
 | [`PRD-sound-alerts.md`](PRD-sound-alerts.md) | Feature 8 — Sound alerts for hearing loss | **none** (fully on-device) | foundation |
-| [`PRD-memory.md`](PRD-memory.md) | Feature 9 — "Remember where I parked" | `api/recall.ts` (Claude) | foundation |
+| [`PRD-memory.md`](PRD-memory.md) | Feature 9 — "Remember where I parked" | `api/recall.ts` (Gemini) | foundation |
 | [`PRD-food-label.md`](PRD-food-label.md) | Feature 10 — Food label reader + diet check | `api/food-label.ts` (Gemini) | foundation |
 | [`PRD-facial-recognition.md`](PRD-facial-recognition.md) | Feature 7 — Enrolled-people recognition (proposal; team decision pending) | none | foundation § 1 for the wake-word hook; otherwise standalone |
 
@@ -26,5 +26,7 @@ Each document is written to be handed to a fresh implementing agent with no othe
 
 - Don't edit files outside your owned paths except the single lines named above.
 - A `VoiceCommandHandler` returns `false` fast for anything not in your PRD's claimed-phrases list; never claim `remind…`, `read this to me`, `scan this`, or `check this ad`.
-- Camera uploads go through `UIImage.uploadJPEGData()`; nothing is persisted server-side; the backend file copies the shape of `api/scam-check.ts` (Gemini) or `api/parse-intent.ts` (Claude).
+- Camera uploads go through `UIImage.uploadJPEGData()`; nothing is persisted server-side; the backend file copies the shape of `api/scam-check.ts` (photo in) or `api/parse-intent.ts` (text in) — both Gemini, one `GEMINI_API_KEY`.
+- Every feature ships a voice-path test: `MockGlassesSession.simulateTranscript("hey dojo …")` through `VoiceAssistant` to the feature's handler, asserting on `onSpeak`. Buttons are a Simulator convenience, not the product.
+- There is no `GEMINI_API_KEY` on dev machines. Backend verification = `npx tsc --noEmit` + `node --test` on pure logic in `backend/lib/`. Live checks happen after merge to `main` (Vercel auto-deploys).
 - Zero-warning build and green tests before opening the PR: `cd ios && xcodegen generate && xcodebuild -project Brownmellon.xcodeproj -scheme Brownmellon -destination 'platform=iOS Simulator,name=iPhone 17' test`, and `cd backend && npx tsc --noEmit`.
