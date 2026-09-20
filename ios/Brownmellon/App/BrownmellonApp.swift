@@ -20,6 +20,7 @@ struct BrownmellonApp: App {
     // and passed to *both* its view and the assistant's `handlers:`, so the
     // voice path and the on-screen path act on the same instance:
     // private let foodLabel = FoodLabelViewModel(glasses: glasses, ...)
+    private let soundAlerts: SoundAlertMonitor
 
     /// The one "Hey Dojo" pipeline. Started once at launch below and never
     /// stopped — listening is app-lifetime, not a tab's.
@@ -42,11 +43,12 @@ struct BrownmellonApp: App {
         datSession = glasses
         #endif
 
+        soundAlerts = SoundAlertMonitor(glasses: glasses, store: secureStore)
         assistant = VoiceAssistant(
             glasses: glasses,
             calendar: calendarService,
             backendBaseURL: Self.backendBaseURL,
-            handlers: []   // v2: [memory, foodLabel, soundAlerts]
+            handlers: [soundAlerts]   // v2: [memory, foodLabel, soundAlerts]
         )
         scheduling = SchedulingViewModel(assistant: assistant)
     }
@@ -89,7 +91,8 @@ struct BrownmellonApp: App {
             // Listen for "Hey Dojo" from launch, on every tab, for as long as
             // the app lives. The root TabView never disappears, so this runs
             // once; switching tabs does not stop it.
-            .task { assistant.start() }
+            .task { assistant.start(); soundAlerts.start() }
+            .environmentObject(soundAlerts)
             // Meta AI hands registration / permission results back through the
             // brownmellon:// scheme declared in project.yml.
             .onOpenURL { url in
