@@ -49,7 +49,10 @@ final class SoundAlertDecider {
         /// Pause before a Safety announcement is repeated.
         var safetyRepeatDelay: TimeInterval = 2.0
         /// A label heard again within this many seconds counts as the same,
-        /// still-ongoing sound (windows arrive every ~0.75 s).
+        /// still-ongoing sound (windows arrive every ~0.75 s). Also the longest
+        /// pause between two windows that still counts as "consecutive": after
+        /// a gap in the audio (session interruption, recognizer restart) the
+        /// streaks start over rather than completing on a stale window.
         var ongoingGap: TimeInterval = 2.0
     }
 
@@ -78,6 +81,8 @@ final class SoundAlertDecider {
     private var crossCooldownUntil: [SoundGroup: Date] = [:]
     private var lastSpeakingAt: Date?
     private var wasSuppressed = false
+    /// When the previous window (suppressed or not) was evaluated.
+    private var lastWindowAt: Date?
 
     init(
         settings: SoundAlertSettings,
@@ -92,6 +97,13 @@ final class SoundAlertDecider {
     /// Feed one classifier window (every label with its confidence). Labels
     /// missing from `window` are treated as below threshold.
     func evaluate(_ window: [SoundClassification], isSpeaking: Bool, now: Date) -> Outcome {
+        // "Consecutive" means back to back: a streak doesn't survive a gap in
+        // the audio (an interruption, a session restart, a paused tap).
+        if let lastWindowAt, now.timeIntervalSince(lastWindowAt) > configuration.ongoingGap {
+            streaks.removeAll()
+        }
+        lastWindowAt = now
+
         // Rule 1 — self-suppression.
         if isSpeaking {
             lastSpeakingAt = now

@@ -149,7 +149,12 @@ final class WhatWasThatVoiceTests: XCTestCase {
             XCTAssertTrue(WhatWasThatResponder.claims(phrase), phrase)
             XCTAssertTrue(WhatWasThatResponder.claims("um \(phrase) just now"), "embedded: \(phrase)")
         }
-        for other in ["what time is it", "did you hear the news", "what was the weather", "scan this card", ""] {
+        // Other features' phrases must fall through untouched.
+        for other in [
+            "what time is it", "did you hear the news", "what was the weather", "",
+            "remind me to take my pills at nine", "read this to me", "scan this", "scan this card", "check this ad",
+            "can i eat this", "remember where i parked", "who is this",
+        ] {
             XCTAssertFalse(WhatWasThatResponder.claims(other), other)
         }
     }

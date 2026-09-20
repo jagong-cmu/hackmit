@@ -35,7 +35,9 @@ final class SoundAlertMonitor: ObservableObject {
     private let notifier: SoundAlertNotifying
     private let decider: SoundAlertDecider
     private var classifier: SoundStreamClassifier?
-    private var announcementTasks: [Task<Void, Never>] = []
+    /// In-flight speech (and pending Safety repeats), so `stop()` can cancel
+    /// them. Each task removes itself when it finishes.
+    private var announcementTasks: [UUID: Task<Void, Never>] = [:]
 
     /// `notifier` defaults to the real haptic + `UNUserNotificationCenter`
     /// channels; tests pass a spy.
@@ -108,7 +110,7 @@ final class SoundAlertMonitor: ObservableObject {
         classifier = nil
         // A pending Safety repeat shouldn't play after the caregiver turned
         // alerts off; speech already in flight finishes on its own.
-        announcementTasks.forEach { $0.cancel() }
+        announcementTasks.values.forEach { $0.cancel() }
         announcementTasks.removeAll()
         isRunning = false
     }
@@ -181,7 +183,10 @@ final class SoundAlertMonitor: ObservableObject {
         }
 
         let glasses = glasses
-        let task = Task { @MainActor in
+        let id = UUID()
+        // Scheduled on the main actor, so it can't run before it's registered below.
+        announcementTasks[id] = Task { @MainActor [weak self] in
+            defer { self?.announcementTasks[id] = nil }
             await glasses.speak(announcement.phrase)
             if let delay = announcement.repeatAfter {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -189,8 +194,6 @@ final class SoundAlertMonitor: ObservableObject {
                 await glasses.speak(announcement.phrase)
             }
         }
-        announcementTasks.removeAll { $0.isCancelled }
-        announcementTasks.append(task)
     }
 
     #if targetEnvironment(simulator)

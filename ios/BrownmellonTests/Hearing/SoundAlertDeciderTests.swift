@@ -170,6 +170,24 @@ final class SoundAlertDeciderTests: XCTestCase {
         XCTAssertEqual(detect("smoke_detector", at: 180 + 61, with: decider).count, 1)
     }
 
+    func testStaleStreakDoesNotSurviveAGapInAudio() {
+        let decider = SoundAlertDecider(settings: settings())
+
+        // One strong window, then the audio stops for ten seconds (an
+        // interruption, a recognizer restart) — that window must not pair up
+        // with the first one after the gap.
+        XCTAssertEqual(decider.evaluate(window(("smoke_detector", 0.9)), isSpeaking: false, now: at(0)).announcements, [])
+        XCTAssertEqual(
+            decider.evaluate(window(("smoke_detector", 0.9)), isSpeaking: false, now: at(10)).announcements, [],
+            "a window from before the gap is not 'consecutive' with one after it"
+        )
+        // Back to back after the gap: announced as usual.
+        XCTAssertEqual(
+            decider.evaluate(window(("smoke_detector", 0.9)), isSpeaking: false, now: at(10 + hop)).announcements.map(\.identifier),
+            ["smoke_detector"]
+        )
+    }
+
     func testOneSoundDoesNotAnnounceTwoLabels() {
         let decider = SoundAlertDecider(settings: settings())
 
