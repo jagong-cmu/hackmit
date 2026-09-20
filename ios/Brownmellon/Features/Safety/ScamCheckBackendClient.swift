@@ -28,7 +28,7 @@ struct ScamCheckBackendClient {
     }()
 
     func check(_ image: UIImage) async throws -> Result {
-        guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+        guard let jpegData = image.uploadJPEGData() else {
             throw ScamCheckBackendError.imageEncodingFailed
         }
 
