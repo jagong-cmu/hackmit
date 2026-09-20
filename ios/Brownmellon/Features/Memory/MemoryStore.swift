@@ -17,7 +17,7 @@ final class MemoryStore: ObservableObject {
     @Published private(set) var notes: [MemoryNote] = []
     @Published private(set) var lastError: String?
 
-    /// False when backed by `MockSecureLocalStore` (Simulator): notes then
+    /// False when backed by `MockSecureLocalStore` (tests): notes then
     /// live only until relaunch, and the tab's empty state says so.
     let isPersistent: Bool
 

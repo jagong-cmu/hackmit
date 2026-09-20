@@ -120,7 +120,7 @@ final class WhatWasThatVoiceTests: XCTestCase {
 
     func testUnrelatedCommandThroughTheAssistantReachesTheNextHandler() async {
         let monitor = makeMonitor()
-        let next = RecordingHandler()
+        let next = HearingRecordingHandler()
         let assistant = makeAssistant(handlers: [monitor, next])
         let delivered = expectation(description: "next handler got the command")
         next.onHandle = { delivered.fulfill() }
@@ -175,7 +175,7 @@ final class WhatWasThatVoiceTests: XCTestCase {
 }
 
 @MainActor
-private final class RecordingHandler: VoiceCommandHandler {
+private final class HearingRecordingHandler: VoiceCommandHandler {
     private(set) var received: [String] = []
     var onHandle: (() -> Void)?
 

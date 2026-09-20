@@ -15,8 +15,8 @@ final class MemoryViewModel: ObservableObject {
     @Published private(set) var notes: [MemoryNote] = []
     @Published private(set) var storeError: String?
 
-    /// False on Simulator (in-memory `MockSecureLocalStore`): notes reset on
-    /// relaunch, and the empty state says so.
+    /// False when backed by the in-memory `MockSecureLocalStore` (tests):
+    /// notes reset on relaunch, and the empty state says so.
     var notesPersist: Bool { handler.store.isPersistent }
 
     private let handler: MemoryCommandHandler

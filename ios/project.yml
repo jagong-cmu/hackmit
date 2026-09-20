@@ -98,10 +98,9 @@ schemes:
       targets:
         - BrownmellonTests
 
-# GoogleSignIn is here because GoogleCalendarService (Core/) needs it. The
-# real Meta DAT SDK belongs to the GlassesSession implementation — not yet
-# built — the app still runs against MockGlassesSession until that lands
-# and this file gets a second `packages:` entry for it.
+# GoogleSignIn is here because GoogleCalendarService (Core/) needs it. Physical
+# device builds use the Meta DAT packages above through DATGlassesSession;
+# Simulator builds use MockGlassesSession because Bluetooth hardware is absent.
 #
 # GoogleCalendarService itself isn't usable yet either — it needs a Google
 # Cloud OAuth client ID that doesn't exist yet (PRD § Deployment).

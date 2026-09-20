@@ -12,10 +12,9 @@ This is the **unified project** — one Xcode project, one Vercel backend, all t
 | 2 | Daily briefing | A | Same coordinator as #1. |
 | 3 | Appointment-card scanning | B — Vision & Documents | Real backend + full iOS flow, verified building and launching on Simulator. |
 | 4 | "Read this to me" | B | Same backend endpoint as #3, different mode. |
-| 5 | Advertisement scam detection (OCR-only) | C — Safety & Emergency | **New scaffold added in this pass** — real backend (`api/scam-check.ts`) + manual-trigger UI, same shape as #3/#4. Not yet voice-triggered or hardware-tested. |
-| 6 | Emergency contact | C | **New scaffold added in this pass** — caregiver setup screen, Keychain-backed contact storage, `tel:` call placement. The PRD's dedicated always-on trigger phrase (bypassing the general NLU pipeline) is real device/DAT work and is **not implemented** — see `EmergencyCallService.swift`. |
+| 5 | Multimodal advertisement scam screening | C — Scam Safety | Existing backend + manual-trigger UI; multimodal analysis and grounded web verification are the next implementation step. Not yet voice-triggered or hardware-tested. |
 
-Nothing talks to the real glasses yet (Meta DAT wrapper doesn't exist) or the real Google Calendar (needs a Google Cloud OAuth client ID — one-time setup, PRD § Deployment). Everything runs against mocks that are real enough to demo and test on Simulator with zero hardware — see "What's mocked" below.
+Physical-device builds use the real Meta DAT-backed `GlassesSession`; Simulator builds use mocks. Google Calendar still needs a Google Cloud OAuth client ID, so calendar features continue to use an in-memory mock by default.
 
 ## Layout
 
@@ -27,17 +26,17 @@ backend/                       One Vercel project, one endpoint per feature area
 ios/
   project.yml                    XcodeGen source of truth — regenerate after any edit
   Brownmellon/
-    App/BrownmellonApp.swift     Wires mocks to every feature's entry view
+    App/BrownmellonApp.swift     Wires DAT on device and mocks on Simulator
     Core/                        Shared protocols + real/mock implementations
-      Interfaces.swift             GlassesSession, CalendarService, SecureLocalStore
+      Interfaces.swift             GlassesSession, CalendarService
+      DATGlassesSession.swift      Real Meta DAT camera + Bluetooth audio session
       GoogleCalendarService.swift  Real, not wired up (needs OAuth client ID)
-      KeychainSecureLocalStore.swift  Real, used by Setup
-      Mocks/                      MockGlassesSession, MockCalendarService, MockSecureLocalStore
+      Mocks/                      MockGlassesSession, MockCalendarService
     Features/
+      Glasses/                     Physical-device DAT connection UI
       Scheduling/                 Features 1–2 (Workstream A)
       Vision/                     Features 3–4 (Workstream B)
       Safety/                     Feature 5 (Workstream C)
-      Setup/                      Feature 6 (Workstream C)
   BrownmellonTests/              WakeWordDetectorTests
 ```
 
@@ -45,11 +44,9 @@ ios/
 
 ## What's mocked, and why
 
-- **`MockGlassesSession`** — real on-device text-to-speech (`AVSpeechSynthesizer`) for `speak`, the system photo picker for `capturePhoto`, and a stored transcript callback (`simulateTranscript(_:)`) for `startListening`/`stopListening` so Scheduling's wake-word path is exercisable without a mic. Swap for the real DAT-backed session once that lands — no other code should need to change, that's the point of the protocol.
+- **`MockGlassesSession`** — used only on Simulator: on-device text-to-speech (`AVSpeechSynthesizer`) for `speak`, the system photo picker for `capturePhoto`, and a stored transcript callback (`simulateTranscript(_:)`) for `startListening`/`stopListening`. Physical-device builds use `DATGlassesSession`.
 - **`MockCalendarService`** — in-memory, resets on relaunch. `GoogleCalendarService` is real and compiles clean against `GoogleSignIn-iOS` 7.1.0, but needs a Google Cloud OAuth client ID (PRD § Deployment) before it's usable.
-- **`MockSecureLocalStore`** — in-memory. `KeychainSecureLocalStore` is real (Keychain-backed, `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) and is a straight swap once someone wants Setup's data to actually persist.
 - **Voice triggers** for Features 3–5 are manual button taps — Workstream A's `WakeWordListener`/`SchedulingCoordinator` only routes to Scheduling today. Extending it to dispatch "Hey Dojo, scan this" / "check this ad" to the other features' view models is the natural next step (their `scan()` / `checkAd()` methods are already designed as the integration seam).
-- **Feature 6's dedicated emergency phrase** (its own always-on listener, independent of the general wake-word pipeline per PRD § Feature 6) isn't implemented — that's real device/DAT work, not something to fake convincingly on Simulator. `EmergencyCallService` only covers placing the call once triggered.
 
 ## Backend
 
@@ -88,7 +85,7 @@ xcodegen generate
 open Brownmellon.xcodeproj
 ```
 
-Run on Simulator or a physical device — 5 tabs, one per feature area (Schedule / Scan Card / Read To Me / Check Ad / Setup). Talks to the deployed backend by default; point `BROWNMELLON_BACKEND_URL` at `vercel dev` locally instead if needed.
+Run on Simulator with 4 feature tabs (Schedule / Scan Card / Read To Me / Check Ad). Physical-device builds add a Glasses tab for DAT registration and connection. The app talks to the deployed backend by default; point `BROWNMELLON_BACKEND_URL` at `vercel dev` locally instead if needed.
 
 ```bash
 xcodebuild -project ios/Brownmellon.xcodeproj -scheme Brownmellon \
@@ -99,8 +96,7 @@ Verified (2026-09-19): builds with zero errors/warnings against iOS 27.0, all `W
 
 ## Known gaps
 
-- No real `GlassesSession` (Meta DAT wrapper) yet — the highest-risk shared piece, per PRD § Foundation.
+- The real DAT `GlassesSession` has landed but still requires verification on the physical Ray-Ban Meta hardware.
 - Google Cloud OAuth client ID not set up — blocks real Calendar reads/writes.
 - Voice triggers for Vision (3–4) and Safety (5) aren't wired to the wake-word pipeline yet.
-- Feature 6's dedicated always-on emergency phrase isn't implemented.
 - Only one physical Ray-Ban Meta Gen 2 pair confirmed available for hardware testing (PRD § Known risks).

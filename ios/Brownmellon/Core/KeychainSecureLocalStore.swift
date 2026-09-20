@@ -1,14 +1,14 @@
 import Foundation
 import Security
 
-/// Keychain-backed `SecureLocalStore` (PRD § Foundation — "needed only by
-/// Workstream C," which owns this file: the emergency-contact mapping and
-/// enrolled/setup data must be encrypted at rest and never synced anywhere).
+/// Keychain-backed `SecureLocalStore` for the v2 features' caregiver settings
+/// and wearer notes (diet profile, sound-alert settings, memory notes) —
+/// encrypted at rest and never synced anywhere.
 ///
 /// One Keychain generic-password item per key. `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`
 /// keeps values off backups/other devices while still readable after the
-/// wearer unlocks the phone once post-boot — this app needs to read the
-/// emergency contact without the wearer necessarily re-authenticating first.
+/// wearer unlocks the phone once post-boot — sound alerts and memory recall
+/// have to work without the wearer re-authenticating first.
 struct KeychainSecureLocalStore: SecureLocalStore {
     private let service: String
 

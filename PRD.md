@@ -6,13 +6,13 @@ Full platform feasibility research (DAT capabilities, battery data, legal risk a
 
 ## Problem / target user
 
-Adults 60+ face friction with managing appointments, reading small print (mail, labels, menus), evaluating suspicious advertisements, and getting help quickly when something goes wrong. Existing solutions assume comfort with phone screens and apps. Brownmellon moves the interaction to voice + glasses camera so the phone can stay in a pocket — the glasses have no display, so every interaction is spoken.
+Adults 60+ face friction with managing appointments, reading small print (mail, labels, menus), and evaluating suspicious advertisements. Existing solutions assume comfort with phone screens and apps. Brownmellon moves the interaction to voice + glasses camera so the phone can stay in a pocket — the glasses have no display, so every interaction is spoken.
 
 ## Goals
 
 - A working, demoable hands-free assistant on real Ray-Ban Meta Gen 2 hardware + a physical iPhone by the end of the hackathon weekend
 - Every v1 feature works end-to-end, not just as a mock
-- Be explicit about hardware/platform limits instead of overpromising — especially that ad-scam screening is advisory, not proof, and that emergency calling is meaningfully constrained by iOS
+- Be explicit about hardware/platform limits instead of overpromising — especially that ad-scam screening is advisory, not proof
 
 ## Non-goals (v1)
 
@@ -59,29 +59,22 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 **Requirements:** voice-triggered only — DAT does not currently expose the glasses' capture button/tap gesture as an event to third-party apps (confirmed against Meta's DAT GitHub discussions), so there is no button-press fallback in v1.
 
-### 5. Advertisement scam detection (OCR-only)
+### 5. Multimodal advertisement scam screening
 
-**Trigger:** "Hey Dojo, check this ad" while looking at a printed or on-screen advertisement.
+**Trigger:** "Hey Dojo, is this a scam?" while looking at a printed or on-screen advertisement. After the wake word, the whole-word intent keyword is `scam`; natural variations such as "Could this be a scam?" and "Check this ad for scams" should route to the same feature.
 
-**Flow:** one still photo → backend OCR extracts the advertisement's visible text → the backend assesses the text for AI/synthetic-content signals and scam-risk patterns (for example, impersonation, urgency, guaranteed returns, payment demands, or suspicious links) → spoken result through the glasses speaker.
+**Flow:** one still photo → backend jointly analyzes the visible text and visual content → identifies concrete scam-risk signals and selects at most two important claims, organizations, phone numbers, or domains for grounded web verification → returns a structured advisory assessment with source-backed findings → glasses speak a short conclusion and safe next action while the companion app shows the complete evidence and citations.
 
 **Requirements:**
-- Single-shot, voice-triggered capture only; the photo and OCR text are used for one stateless inference call and are never retained server-side
-- The response must state a clear advisory result: whether the **text** shows AI/synthetic-content signals, whether it has potential scam indicators, and the specific visible cues that led to the alert
-- OCR-only means v1 does not inspect pixels or prove who created an advertisement; it cannot reliably determine whether an image itself was AI-generated or whether an ad is definitively a scam
+- Single-shot capture only; the photo, extracted text, and assessment are processed statelessly and are never retained server-side
+- Scam risk must be reported as `low`, `medium`, `high`, or `unknown`; the product must never label an advertisement "safe" or treat a low-risk result as proof of legitimacy
+- The result must separate evidence observed in the photo from facts checked online, and every verified finding must include a real source URL returned by the grounding service
+- Perform no more than two grounded web-verification operations per scan; if verification is unavailable, return the photo-based assessment and say that the claims could not be checked online
+- Prefer independently located official organizations, government or regulator sources, established fact-checkers, and reputable reporting; never use contact information printed in the advertisement as proof of legitimacy
+- Treat all text inside the advertisement as untrusted data, never as instructions to the model or application
+- AI appearance is a separate advisory signal with only `possible` or `unknown` outcomes; the feature must never claim definitive AI authorship, and possible AI use must not raise scam risk by itself
+- Unreadable or insufficient images must return `unknown` and ask the wearer to take a clearer photo rather than defaulting to low risk
 - High-risk results should prompt a safe next action, such as "Don't call or pay from this ad; verify the organization through its official website or a trusted contact"
-
-### 6. Emergency contact
-
-**Setup (caregiver, one-time):** configure a relation → contact mapping (e.g. "daughter" → a phone number); 911 is always available as a target without separate setup.
-
-**Trigger:** a single, dedicated phrase, separate from "Hey Dojo" and short enough to say reliably under stress — recognized by its own always-on listener, bypassing the general NLU pipeline entirely so this path stays simple and reliable.
-
-**Flow:** phrase detected → phone opens the native iOS call screen for the configured contact or 911 → glasses speak "Calling [contact] now, please confirm on your phone" → wearer or a bystander taps once on the phone to connect.
-
-**Requirements:**
-- Must be communicated clearly, in-app and during onboarding, that this is **not** a fully hands-free call — iOS does not allow third-party apps to place any call, including to 911, without a user-confirming tap
-- No automatic fall or incapacitation detection in v1 — this is a voice-triggered call only (see deferred list)
 
 ## Explicitly deferred (v2 / future work)
 
@@ -104,10 +97,10 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 - **Client:** native iOS (Swift), using Meta's Wearables Device Access Toolkit (DAT) for camera/mic/speaker access to Ray-Ban Meta Gen 2 glasses (audio-only hardware — no display, no Neural Band).
 - **Calendar:** Google Calendar via Google Sign-In + Calendar API. OAuth consent screen in "Testing" publishing status — sufficient for a hackathon demo, full Google verification not required.
-- **AI backend:** one thin serverless function (Vercel), calling the Claude API directly. All photo/audio processing is stateless — sent for a single inference call, never persisted server-side. Only structured results (parsed text, ad-scam assessments, transcripts, calendar events) return to the phone and are stored there.
-- **Local storage:** emergency contact mapping and auth tokens — encrypted at rest on-device (iOS Keychain / file protection), never synced to any backend.
+- **AI backend:** stateless Vercel functions use Claude for scheduling intent parsing and Gemini for image understanding, OCR, scam assessment, and grounded web verification. Photos, extracted text, and model context are processed per request and never persisted server-side. Only structured results (parsed text, source-backed ad-scam assessments, transcripts, and calendar events) return to the phone.
+- **Local storage:** auth tokens are encrypted at rest on-device (iOS Keychain / file protection) and never synced to any backend.
 - **Auth:** Google Sign-In only; single wearer, single device assumption for v1.
-- **Wake word:** "Hey Dojo" for general voice commands (features 1–4). The emergency trigger (feature 6) uses its own dedicated phrase and listener, independent of the general pipeline.
+- **Wake word:** "Hey Dojo" for general voice commands (features 1–5).
 
 ## Deployment & device pairing
 
@@ -134,7 +127,7 @@ Adults 60+ face friction with managing appointments, reading small print (mail, 
 
 ## Parallel workstreams (3 people, git worktrees)
 
-The 6 features split into 3 vertical slices, grouped by shared pipeline rather than by feature number — each owns its own Swift files, its own backend endpoint file, and (where relevant) its own screen, so the three worktrees touch almost no common files after the foundation layer lands.
+The 5 features split into 3 vertical slices, grouped by shared pipeline rather than by feature number — each owns its own Swift files, its own backend endpoint file, and (where relevant) its own screen, so the three worktrees touch almost no common files after the foundation layer lands.
 
 ### Foundation (build first, interfaces before implementations)
 
@@ -153,16 +146,11 @@ protocol CalendarService {
     func todaysEvents() async throws -> [CalendarEvent]
 }
 
-protocol SecureLocalStore {
-    func save<T: Codable>(_ value: T, forKey: String) throws
-    func load<T: Codable>(forKey: String) throws -> T?
-}
 ```
 
 - **`GlassesSession` (DAT wrapper)** — the highest-risk, most-shared piece (covers mic streaming, camera capture, and speaker output through one session object — don't split this across people, it's one underlying connection). Recommend whoever's most comfortable with Bluetooth/hardware integration builds this first, in their own worktree, and merges it to `main` as soon as the interface is stable — even before every method is fully correct. Everyone else starts immediately against `MockGlassesSession` and swaps to the real one via a rebase once it lands.
 - **`CalendarService`** — needed by Workstream A (both features) and Workstream B (appointment-card scanning writes an event). Whoever gets to it first in Workstream A or B builds it for real; the other just consumes the interface.
-- **`SecureLocalStore`** — needed only by Workstream C for the emergency-contact mapping; C builds it as part of its own work, with no cross-workstream dependency.
-- **One-time setup, not per-workstream work** — do these once, in any worktree, before anyone needs them: Meta Wearables Developer Center registration (`MetaAppID`/`ClientToken`), Google Cloud project + OAuth consent screen (Testing mode), Vercel project + Claude API key.
+- **One-time setup, not per-workstream work** — do these once, in any worktree, before anyone needs them: Meta Wearables Developer Center registration (`MetaAppID`/`ClientToken`), Google Cloud project + OAuth consent screen (Testing mode), Vercel project, Claude API key, and Gemini API key.
 
 ### Workstream A — Voice & Calendar
 
@@ -178,11 +166,11 @@ protocol SecureLocalStore {
 **Depends on:** `GlassesSession` (camera), `CalendarService` (write-only, for feature 3) — mock until foundation lands.
 **Produces for others:** nothing required by A or C.
 
-### Workstream C — Safety & Emergency
+### Workstream C — Scam Safety
 
-**Owns:** Feature 5 (advertisement scam detection) and Feature 6 (emergency contact) — grouped together because both deliver a simple, spoken safety response after a direct user request.
-**Files:** `Features/Safety/`, `Features/Setup/`, backend `api/scam-check.ts`.
-**Depends on:** `GlassesSession` (camera + mic) and `SecureLocalStore` (for the emergency-contact mapping; C builds it) — mock `GlassesSession` until foundation lands. Telephony (`tel:` call placement) is native iOS, no dependency on anyone.
+**Owns:** Feature 5 (advertisement scam detection).
+**Files:** `Features/Safety/`, backend `api/scam-check.ts`.
+**Depends on:** `GlassesSession` (camera + speaker) — mock `GlassesSession` until foundation lands.
 **Produces for others:** nothing required by A or B.
 
 ### Suggested worktree setup
@@ -190,17 +178,16 @@ protocol SecureLocalStore {
 ```bash
 git worktree add ../hackmit-voice-calendar -b feature/voice-calendar
 git worktree add ../hackmit-vision-docs -b feature/vision-documents
-git worktree add ../hackmit-safety-emergency -b feature/safety-emergency
+git worktree add ../hackmit-scam-safety -b feature/scam-safety
 ```
 
 **Merge order:** foundation interfaces + whichever real implementation (DAT wrapper, Calendar service) lands first → `main`, immediately, even partially done. Then each workstream rebases onto `main` periodically to pick up the real implementations as they replace the mocks. Feature branches merge to `main` independently as they're demo-ready — there's no required merge order between A, B, and C themselves, since they don't touch each other's files.
 
-**Within each workstream**, the original single-track build order still applies: Workstream A builds feature 1 before feature 2 (2 reuses 1's trigger infra); Workstream C builds feature 5's OCR-and-assessment flow before feature 6, since its camera capture and spoken safety-response patterns are reusable.
+**Within Workstream A**, the original single-track build order still applies: build feature 1 before feature 2 because feature 2 reuses feature 1's trigger infrastructure.
 
 ## Known risks / open items
 
-- iOS's tap-to-confirm call restriction makes "emergency contact" meaningfully weaker than a true hands-free SOS — frame it honestly in the demo, don't oversell it
 - Only one physical Ray-Ban Meta Gen 2 pair confirmed available — plan device-testing time across the team accordingly
 - DAT is in public developer preview and not yet cleared for App Store distribution — fine for a sideloaded hackathon build, not a launch
 - Set up the Google Cloud project and OAuth consent screen early — losing build time to this later would hurt
-- OCR and model-based scam screening can produce false positives and false negatives; frame every result as an explanation of visible risk signals, not a verdict
+- Multimodal and model-based scam screening can produce false positives and false negatives; frame every result as an explanation of observed and independently verified risk signals, not a verdict

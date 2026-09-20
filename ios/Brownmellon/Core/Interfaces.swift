@@ -55,6 +55,9 @@ protocol CalendarService {
     func todaysEvents() async throws -> [CalendarEvent]
 }
 
+/// Encrypted-at-rest, on-device-only key/value storage for caregiver
+/// settings and the wearer's own notes (diet profile, sound-alert settings,
+/// memory notes). Never synced to any backend — see PRD § Local storage.
 protocol SecureLocalStore {
     func save<T: Codable>(_ value: T, forKey: String) throws
     func load<T: Codable>(forKey: String) throws -> T?

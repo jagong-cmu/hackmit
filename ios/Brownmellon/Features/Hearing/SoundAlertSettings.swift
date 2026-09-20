@@ -2,7 +2,7 @@ import Foundation
 
 /// What the caregiver chose in Setup → Sound Alerts. Persisted through
 /// `SecureLocalStore` under `SoundAlertSettings.storageKey`, same pattern as
-/// `EmergencyContactSetupViewModel`.
+/// the other Setup screens.
 ///
 /// The threshold and the two-window rule are settings rather than constants
 /// on purpose: HFP mic audio is band-limited and will lower the classifier's

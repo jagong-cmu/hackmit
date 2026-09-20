@@ -7,9 +7,6 @@ struct SetupHomeView: View {
 
     var body: some View {
         List {
-            NavigationLink("Emergency Contacts") {
-                EmergencyContactSetupView(store: store)
-            }
             NavigationLink("Diet") { DietSetupView(store: store) }
             NavigationLink("Sound Alerts") { SoundAlertSettingsView() }
         }
