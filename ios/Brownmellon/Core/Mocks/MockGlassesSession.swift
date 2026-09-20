@@ -96,9 +96,14 @@ final class MockGlassesSession: NSObject, GlassesSession {
 
     // MARK: - Listen
 
+    /// How many times listening has been (re)started — the coordinator
+    /// restarts after every acted-on command so utterances don't accumulate.
+    private(set) var startListeningCount = 0
+
     func startListening(onTranscript: @escaping (String) -> Void) {
         self.onTranscript = onTranscript
         isListening = true
+        startListeningCount += 1
     }
 
     func stopListening() {

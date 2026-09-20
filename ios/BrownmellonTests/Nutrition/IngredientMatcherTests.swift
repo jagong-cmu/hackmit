@@ -38,6 +38,29 @@ final class IngredientMatcherTests: XCTestCase {
         )
     }
 
+    func testPlantMilksAreNotDairy() {
+        let label = FoodLabelResult.label(ingredients: ["almond milk (filtered water, almonds)", "oat milk", "sea salt"])
+        XCTAssertNil(IngredientMatcher.presence(of: .milk, in: label), "almond/oat milk must not read as a milk allergen")
+        // The nut itself still counts for a tree-nut allergy.
+        guard case .contains(let match)? = IngredientMatcher.presence(of: .treeNuts, in: label) else {
+            return XCTFail("almonds should still be found for tree nuts")
+        }
+        XCTAssertEqual(match.keyword, "almond")
+    }
+
+    func testPlantMilkDoesNotHideRealDairy() {
+        let label = FoodLabelResult.label(ingredients: ["oat milk", "whey protein"])
+        XCTAssertEqual(
+            IngredientMatcher.presence(of: .milk, in: label),
+            .contains(IngredientMatcher.Match(keyword: "whey", source: "whey protein"))
+        )
+        // And the manufacturer's own statement always wins.
+        let declared = FoodLabelResult.label(ingredients: ["oat milk"], contains: "Contains: milk")
+        guard case .contains? = IngredientMatcher.presence(of: .milk, in: declared) else {
+            return XCTFail("a Contains: milk statement must be respected")
+        }
+    }
+
     func testContainsStatementWithParentheticalTreeNuts() {
         let label = FoodLabelResult.label(ingredients: ["sugar"], contains: "Contains: tree nuts (almonds), soy.")
         guard case .contains(let match)? = IngredientMatcher.presence(of: .treeNuts, in: label) else {

@@ -228,7 +228,16 @@ enum IngredientMatcher {
             return .contains(match)
         }
         let split = splitAdvisories(label.ingredients)
-        if let match = firstMatch(of: keywords, in: split.ingredients) {
+        if allergen == .milk {
+            // "Almond milk" is not dairy: run the milk keywords against each
+            // ingredient with plant-milk phrases removed, but report the
+            // ingredient as printed. The "Contains:" line above stays authoritative.
+            for ingredient in split.ingredients {
+                if let match = firstMatch(of: keywords, in: [stripPlantMilks(ingredient)]) {
+                    return .contains(Match(keyword: match.keyword, source: ingredient))
+                }
+            }
+        } else if let match = firstMatch(of: keywords, in: split.ingredients) {
             return .contains(match)
         }
         var advisories = split.advisories
@@ -237,6 +246,21 @@ enum IngredientMatcher {
             return .mayContain(match)
         }
         return nil
+    }
+
+    /// Plant-based "milks" that the milk-allergen rule must not read as dairy.
+    static let plantMilkPhrases: [String] = [
+        "almond milk", "oat milk", "soy milk", "soya milk", "coconut milk", "rice milk", "cashew milk",
+        "hemp milk", "pea milk", "macadamia milk", "hazelnut milk", "flax milk", "walnut milk",
+    ]
+
+    /// Removes plant-milk phrases so their "milk" token can't match.
+    static func stripPlantMilks(_ text: String) -> String {
+        var normalized = normalize(text)
+        for phrase in plantMilkPhrases {
+            normalized = normalized.replacingOccurrences(of: phrase, with: " ")
+        }
+        return normalized
     }
 
     /// The avoid-list rule: substring match on ingredients and product name.

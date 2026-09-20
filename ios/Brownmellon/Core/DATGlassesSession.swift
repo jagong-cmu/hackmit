@@ -98,6 +98,11 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var onTranscript: ((String) -> Void)?
+    /// Partial results arrive many times per sentence; consumers get one
+    /// delivery per utterance, once the text has settled (see TranscriptSettler).
+    private lazy var settler = TranscriptSettler { [weak self] text in
+        self?.onTranscript?(text)
+    }
 
     /// The single input tap fans out to the speech recognizer and to any
     /// `startAudioTap` consumer through this — it is the only thing the tap
@@ -249,6 +254,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     func stopListening() {
         isListening = false
         onTranscript = nil
+        settler.reset()
         tearDownRecognition(deactivateSession: true)
     }
 
@@ -288,6 +294,9 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         // doesn't work" on first hardware test.
         request.requiresOnDeviceRecognition = false
         recognitionRequest = request
+        // A fresh task transcribes from silence, so the previous utterance's
+        // settled text must not suppress an identical new one.
+        settler.reset()
 
         // While a `startAudioTap` consumer is active the engine and its tap are
         // already up and stay up across recognizer restarts — only the request
@@ -314,7 +323,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
                 if let result {
                     let text = result.bestTranscription.formattedString
                     self.lastTranscript = text
-                    self.onTranscript?(text)
+                    self.settler.ingest(text, isFinal: result.isFinal)
                 }
                 // Apple ends a recognition task after ~1 minute of audio (or on
                 // error). The wake word has to stay live indefinitely, so roll

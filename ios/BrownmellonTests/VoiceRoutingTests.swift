@@ -174,6 +174,58 @@ final class VoiceRoutingTests: XCTestCase {
         XCTAssertEqual(seenByTest, [""], "a hook installed before the assistant must keep firing")
         XCTAssertEqual(assistant.lastResponse, "")
     }
+
+    // MARK: - One utterance per transcript
+
+    /// A live recognizer appends every sentence to one growing transcript.
+    /// After acting on a command the coordinator restarts listening so the
+    /// next sentence starts from an empty transcript instead of arriving as
+    /// "…parked in section b hey dojo what do i have today".
+    func testActedOnCommandRestartsListening() async {
+        let handler = SpyHandler(returning: true)
+        let assistant = VoiceAssistant(
+            glasses: mock,
+            calendar: calendar,
+            intents: stubbedIntentClient(),
+            handlers: [handler]
+        )
+        let delivered = expectation(description: "handler received the command")
+        handler.onHandle = { delivered.fulfill() }
+
+        assistant.start()
+        XCTAssertEqual(mock.startListeningCount, 1)
+
+        mock.simulateTranscript("hey dojo test phrase")
+        await fulfillment(of: [delivered], timeout: 5)
+        // The restart happens as `handle` returns, after the handler ran.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(mock.startListeningCount, 2, "listening restarts once per acted-on command")
+        XCTAssertTrue(mock.isListening, "…and is live again afterwards")
+
+        // A second command on the fresh transcript still reaches the handler.
+        let deliveredAgain = expectation(description: "second command received")
+        handler.onHandle = { deliveredAgain.fulfill() }
+        mock.simulateTranscript("hey dojo second phrase")
+        await fulfillment(of: [deliveredAgain], timeout: 5)
+        XCTAssertEqual(handler.received, ["test phrase", "second phrase"])
+    }
+
+    func testTypedCommandWithoutStartDoesNotBeginListening() async {
+        let handler = SpyHandler(returning: true)
+        let assistant = VoiceAssistant(
+            glasses: mock,
+            calendar: calendar,
+            intents: stubbedIntentClient(),
+            handlers: [handler]
+        )
+
+        await assistant.handle("test phrase")
+
+        XCTAssertEqual(handler.received, ["test phrase"])
+        XCTAssertEqual(mock.startListeningCount, 0, "a restart only applies while listening is live")
+        XCTAssertFalse(mock.isListening)
+    }
 }
 
 // MARK: - Test doubles

@@ -81,6 +81,11 @@ targets:
     platform: iOS
     sources:
       - path: BrownmellonTests
+        excludes:
+          # The sound fixtures' generator and provenance notes are for humans;
+          # only the .wav files belong in the test bundle.
+          - "Fixtures/Sounds/generate_fixtures.py"
+          - "Fixtures/Sounds/SOURCES.txt"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.brownmellon.tests

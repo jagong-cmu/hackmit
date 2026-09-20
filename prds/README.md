@@ -28,5 +28,9 @@ Each document is written to be handed to a fresh implementing agent with no othe
 - A `VoiceCommandHandler` returns `false` fast for anything not in your PRD's claimed-phrases list; never claim `remind…`, `read this to me`, `scan this`, or `check this ad`.
 - Camera uploads go through `UIImage.uploadJPEGData()`; nothing is persisted server-side; the backend file copies the shape of `api/scam-check.ts` (photo in) or `api/parse-intent.ts` (text in) — both Gemini, one `GEMINI_API_KEY`.
 - Every feature ships a voice-path test: `MockGlassesSession.simulateTranscript("hey dojo …")` through `VoiceAssistant` to the feature's handler, asserting on `onSpeak`. Buttons are a Simulator convenience, not the product.
-- There is no `GEMINI_API_KEY` on dev machines. Backend verification = `npx tsc --noEmit` + `node --test` on pure logic in `backend/lib/`. Live checks happen after merge to `main` (Vercel auto-deploys).
+- There is no `GEMINI_API_KEY` on dev machines. Backend verification = `npx tsc --noEmit` + `npm test` (node's test runner over `backend/tests/**/*.test.ts`, importing the endpoints' exported pure helpers; a bare `node --test backend/tests/` directory argument does not glob on Node 24). Live checks happen after merge to `main` (Vercel auto-deploys).
+
+## Status (2026-09-19)
+
+Foundation and Features 8, 9, 10 are implemented, independently verified, and integrated on the `worktree-facial-recognition` branch: 344 iOS tests and 32 backend tests green, zero warnings. Feature 7 (facial recognition) remains a proposal.
 - Zero-warning build and green tests before opening the PR: `cd ios && xcodegen generate && xcodebuild -project Brownmellon.xcodeproj -scheme Brownmellon -destination 'platform=iOS Simulator,name=iPhone 17' test`, and `cd backend && npx tsc --noEmit`.

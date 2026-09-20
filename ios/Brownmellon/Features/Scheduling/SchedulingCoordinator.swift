@@ -14,6 +14,7 @@ final class SchedulingCoordinator {
     /// Consulted in order before the calendar intent parser; the first one
     /// to return true owns the command (see `VoiceCommandHandler`).
     private let handlers: [VoiceCommandHandler]
+    private var isListening = false
 
     init(
         glasses: GlassesSession,
@@ -30,6 +31,7 @@ final class SchedulingCoordinator {
     }
 
     func start() {
+        isListening = true
         glasses.startListening { [weak self] transcript in
             // The recognizer callback has no thread guarantees; hop to the main
             // actor before touching the listener's debounce state.
@@ -41,11 +43,25 @@ final class SchedulingCoordinator {
     }
 
     func stop() {
+        isListening = false
         glasses.stopListening()
+    }
+
+    /// A live recognizer keeps appending to one transcript, so without this
+    /// the wearer's next sentence would arrive glued to the command we just
+    /// acted on ("…parked in section b hey dojo what do i have today") and the
+    /// wake-word detector would hand back the wrong command. Restarting gives
+    /// the next utterance an empty transcript. No-op unless `start()` is live.
+    private func restartListeningForNextUtterance() {
+        guard isListening else { return }
+        glasses.stopListening()
+        start()
     }
 
     /// Exposed for tests and for a Setup-Mode "try it" button.
     func handle(_ command: String) async {
+        defer { restartListeningForNextUtterance() }
+
         for handler in handlers {
             if await handler.handle(command) {
                 listener.reset()
