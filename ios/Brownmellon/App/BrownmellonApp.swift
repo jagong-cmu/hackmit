@@ -5,15 +5,12 @@ import MWDATCore
 struct BrownmellonApp: App {
     // GlassesSession: real Ray-Ban Meta (DAT + Bluetooth audio) on a physical
     // phone, photo-picker/TTS mock on Simulator where there's no Bluetooth.
-    // CalendarService / SecureLocalStore are still mocks — swap for
-    // GoogleCalendarService (needs an OAuth client ID, PRD § Deployment) and
-    // KeychainSecureLocalStore when ready.
+    // CalendarService remains mocked until Google Calendar OAuth is set up.
     // Plain properties, not @StateObject: these are session/service
     // objects, not view state — the ViewModels are the ObservableObjects.
     private let glasses: GlassesSession
     private let datSession: DATGlassesSession?
     private let calendarService = MockCalendarService()
-    private let secureStore = MockSecureLocalStore()
 
     init() {
         #if targetEnvironment(simulator)
@@ -60,11 +57,6 @@ struct BrownmellonApp: App {
 
                 AdScamCheckView(glasses: glasses)
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
-
-                NavigationStack {
-                    EmergencyContactSetupView(store: secureStore)
-                }
-                .tabItem { Label("Setup", systemImage: "person.crop.circle.badge.exclamationmark") }
             }
             // Meta AI hands registration / permission results back through the
             // brownmellon:// scheme declared in project.yml.

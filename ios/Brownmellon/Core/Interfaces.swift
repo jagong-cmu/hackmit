@@ -40,8 +40,3 @@ protocol CalendarService {
     /// these aloud in order and do not re-sort.
     func todaysEvents() async throws -> [CalendarEvent]
 }
-
-protocol SecureLocalStore {
-    func save<T: Codable>(_ value: T, forKey: String) throws
-    func load<T: Codable>(forKey: String) throws -> T?
-}
