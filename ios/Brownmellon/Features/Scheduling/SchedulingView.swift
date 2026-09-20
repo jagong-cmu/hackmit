@@ -6,14 +6,15 @@ import SwiftUI
 /// text field below is a Simulator/demo stand-in for actually saying it
 /// out loud (`SchedulingCoordinator.handle` is explicitly designed for
 /// this — see its doc comment).
+///
+/// Listening is owned by the app-wide `VoiceAssistant` and runs for the
+/// app's lifetime — this screen neither starts nor stops it.
 struct SchedulingView: View {
-    @StateObject private var viewModel: SchedulingViewModel
+    @ObservedObject var viewModel: SchedulingViewModel
     private let realGlasses: DATGlassesSession?
 
-    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL) {
-        _viewModel = StateObject(
-            wrappedValue: SchedulingViewModel(glasses: glasses, calendar: calendar, backendBaseURL: backendBaseURL)
-        )
+    init(viewModel: SchedulingViewModel, glasses: GlassesSession) {
+        self.viewModel = viewModel
         realGlasses = glasses as? DATGlassesSession
     }
 
@@ -59,8 +60,6 @@ struct SchedulingView: View {
             }
         }
         .padding()
-        .onAppear { viewModel.start() }
-        .onDisappear { viewModel.stop() }
     }
 }
 

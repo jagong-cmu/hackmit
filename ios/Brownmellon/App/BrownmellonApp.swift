@@ -15,9 +15,21 @@ struct BrownmellonApp: App {
     private let calendarService = MockCalendarService()
     private let secureStore = MockSecureLocalStore()
 
+    // v2 features (each PRD adds one line here, and one tab or Setup link).
+    // A feature view model that is also a VoiceCommandHandler is owned here
+    // and passed to *both* its view and the assistant's `handlers:`, so the
+    // voice path and the on-screen path act on the same instance:
+    // private let foodLabel = FoodLabelViewModel(glasses: glasses, ...)
+
+    /// The one "Hey Dojo" pipeline. Started once at launch below and never
+    /// stopped — listening is app-lifetime, not a tab's.
+    private let assistant: VoiceAssistant
+    private let scheduling: SchedulingViewModel
+
     init() {
         #if targetEnvironment(simulator)
-        glasses = MockGlassesSession()
+        let glasses = MockGlassesSession()
+        self.glasses = glasses
         datSession = nil
         #else
         do {
@@ -25,13 +37,21 @@ struct BrownmellonApp: App {
         } catch {
             assertionFailure("Wearables SDK failed to configure: \(error)")
         }
-        let session = DATGlassesSession()
-        glasses = session
-        datSession = session
+        let glasses = DATGlassesSession()
+        self.glasses = glasses
+        datSession = glasses
         #endif
+
+        assistant = VoiceAssistant(
+            glasses: glasses,
+            calendar: calendarService,
+            backendBaseURL: Self.backendBaseURL,
+            handlers: []   // v2: [memory, foodLabel, soundAlerts]
+        )
+        scheduling = SchedulingViewModel(assistant: assistant)
     }
 
-    private var backendBaseURL: URL {
+    private static var backendBaseURL: URL {
         if let override = Bundle.main.object(forInfoDictionaryKey: "BROWNMELLON_BACKEND_URL") as? String,
            let url = URL(string: override) {
             return url
@@ -49,7 +69,7 @@ struct BrownmellonApp: App {
                     .tabItem { Label("Glasses", systemImage: "eyeglasses") }
                 }
 
-                SchedulingView(glasses: glasses, calendar: calendarService, backendBaseURL: backendBaseURL)
+                SchedulingView(viewModel: scheduling, glasses: glasses)
                     .tabItem { Label("Schedule", systemImage: "calendar") }
 
                 AppointmentCardScanView(glasses: glasses, calendar: calendarService)
@@ -62,10 +82,14 @@ struct BrownmellonApp: App {
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
 
                 NavigationStack {
-                    EmergencyContactSetupView(store: secureStore)
+                    SetupHomeView(store: secureStore)
                 }
                 .tabItem { Label("Setup", systemImage: "person.crop.circle.badge.exclamationmark") }
             }
+            // Listen for "Hey Dojo" from launch, on every tab, for as long as
+            // the app lives. The root TabView never disappears, so this runs
+            // once; switching tabs does not stop it.
+            .task { assistant.start() }
             // Meta AI hands registration / permission results back through the
             // brownmellon:// scheme declared in project.yml.
             .onOpenURL { url in

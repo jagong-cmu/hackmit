@@ -66,7 +66,7 @@ struct GlassesView: View {
                     LabeledContent("Last heard", value: heard)
                         .lineLimit(2)
                 }
-                Text("Starts automatically on the Schedule tab. Audio routes over the glasses' Bluetooth link when they're connected as a headset.")
+                Text("Starts automatically when the app launches and stays on across tabs. Audio routes over the glasses' Bluetooth link when they're connected as a headset.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

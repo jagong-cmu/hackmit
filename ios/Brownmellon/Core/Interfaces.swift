@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import AVFoundation
 
 // Shared foundation interfaces (see PRD.md § Parallel workstreams).
 // Owned collectively across all three workstreams — code against these
@@ -7,7 +8,8 @@ import UIKit
 
 @MainActor
 protocol GlassesSession {
-    /// Speaks text aloud through the glasses' open-ear speaker.
+    /// Speaks text aloud through the glasses' open-ear speaker. Returns once
+    /// the audio has finished playing.
     func speak(_ text: String) async
 
     /// Starts streaming mic audio and calling `onTranscript` with
@@ -19,6 +21,18 @@ protocol GlassesSession {
     /// Captures a single still photo via the glasses camera (episodic,
     /// not continuous streaming — see PRD design principles).
     func capturePhoto() async throws -> UIImage
+
+    /// True while the glasses speaker is playing our own speech. Features
+    /// use this to ignore the mic while we talk (the open-ear speaker leaks
+    /// straight back into the mic array).
+    var isSpeaking: Bool { get }
+
+    /// Raw mic audio for on-device analysis (sound classification). Runs
+    /// alongside `startListening` — both are consumers of the same input
+    /// stream. Buffers never leave the device. The callback arrives on the
+    /// audio thread, not the main actor.
+    func startAudioTap(_ onBuffer: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)
+    func stopAudioTap()
 }
 
 struct CalendarEvent: Codable, Identifiable, Equatable {
