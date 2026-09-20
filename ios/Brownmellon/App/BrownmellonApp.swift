@@ -22,6 +22,7 @@ struct BrownmellonApp: App {
     private let memory: MemoryCommandHandler
     private let memoryView: MemoryViewModel
     private let foodLabel: FoodLabelViewModel
+    private let soundAlerts: SoundAlertMonitor
 
     /// The one "Hey Dojo" pipeline. Started once at launch below and never
     /// stopped — listening is app-lifetime, not a tab's.
@@ -51,11 +52,12 @@ struct BrownmellonApp: App {
             recall: RecallClient(endpoint: Self.backendBaseURL.appendingPathComponent("api/recall"))
         )
         foodLabel = FoodLabelViewModel(glasses: glasses, store: secureStore)
+        soundAlerts = SoundAlertMonitor(glasses: glasses, store: secureStore)
         assistant = VoiceAssistant(
             glasses: glasses,
             calendar: calendarService,
             backendBaseURL: Self.backendBaseURL,
-            handlers: [memory, foodLabel]
+            handlers: [memory, foodLabel, soundAlerts]
         )
         memoryView = MemoryViewModel(handler: memory, assistant: assistant)
         scheduling = SchedulingViewModel(assistant: assistant)
@@ -102,10 +104,11 @@ struct BrownmellonApp: App {
                 }
                 .tabItem { Label("Setup", systemImage: "person.crop.circle.badge.exclamationmark") }
             }
-            // Listen for "Hey Dojo" from launch, on every tab, for as long as
-            // the app lives. The root TabView never disappears, so this runs
-            // once; switching tabs does not stop it.
-            .task { assistant.start() }
+            // Listen for "Hey Dojo" — and, if enabled, for household sounds —
+            // from launch, on every tab, for as long as the app lives. The root
+            // TabView never disappears, so this runs once.
+            .task { assistant.start(); soundAlerts.start() }
+            .environmentObject(soundAlerts)
             // Meta AI hands registration / permission results back through the
             // brownmellon:// scheme declared in project.yml.
             .onOpenURL { url in

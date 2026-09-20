@@ -1,0 +1,29 @@
+Sound Alerts test fixtures (PRD-sound-alerts.md § Files)
+=========================================================
+
+All four clips are synthesized from first principles by generate_fixtures.py
+(numpy, seeded RNG) — no recordings, no third-party audio, so they are public
+domain / CC0 by construction. Mono, 16 kHz, 16-bit PCM WAV, 3.0 s, 96,044
+bytes each.
+
+  smoke_alarm.wav  T3 pattern (three 0.5 s beeps, 0.5 s gaps) from a ~3.2 kHz
+                   piezo with harmonics, slight chirp and room reflections.
+  doorbell.wav     Two-tone mechanical chime ("ding-dong", A5 then F5) —
+                   struck tone bars with free-bar overtones and a long decay.
+  knock.wav        Five knuckle knocks on a wooden door: band-limited impacts
+                   with a faint low panel thud, dry room.
+  silence.wav      Quiet room: noise floor only (about -66 dBFS).
+
+Verified against SNClassifySoundRequest(classifierIdentifier: .version1) with
+windowDuration 1.5 s / overlapFactor 0.5 (the settings SoundAlertMonitor uses):
+
+  smoke_alarm.wav  smoke_detector 0.99 / 0.99 / 0.98
+  doorbell.wav     door_bell      1.00 / 1.00 / 0.99
+  knock.wav        knock          1.00 / 0.81 / 0.99
+  silence.wav      nothing above 0.11 (top label "music" ~0.10)
+
+Regenerate with:  python3 generate_fixtures.py .
+The copies in ios/Brownmellon/Features/Hearing/DemoSounds/ are byte-identical
+and exist only so the Simulator demo buttons in SoundAlertSettingsView can
+play them through MockGlassesSession.simulateAudio (the test bundle isn't
+available to the running app).
