@@ -226,7 +226,7 @@ export function normalizeFoodLabel(candidate: unknown): FoodLabelResult {
   const nutrientsSource = isRecord(candidate.nutrients) ? candidate.nutrients : {};
   const nutrients: Nutrients = { ...EMPTY_NUTRIENTS };
   for (const key of NUTRIENT_KEYS) {
-    nutrients[key] = legibleNumberOrNull(nutrientsSource[key]);
+    nutrients[key] = legibleNumberOrNull(nutrientsSource[key], unitFor(key));
   }
 
   const normalized: FoodLabelResult = {
@@ -286,18 +286,39 @@ function stringArray(value: unknown): string[] {
     .filter((item) => item.length > 0);
 }
 
+/** The unit a nutrient field is declared in — the suffix of its key. */
+export type UnitFamily = 'mg' | 'g' | 'cal';
+
+const UNIT_SPELLINGS: Record<UnitFamily, string[]> = {
+  mg: ['mg', 'milligram', 'milligrams'],
+  g: ['g', 'gram', 'grams'],
+  cal: ['cal', 'kcal', 'calorie', 'calories'],
+};
+
+export function unitFor(key: keyof Nutrients): UnitFamily {
+  if (key === 'calories') return 'cal';
+  return key.endsWith('Mg') ? 'mg' : 'g';
+}
+
 /**
- * A finite, non-negative number, or null. Accepts a numeric string with an
- * optional unit suffix the model sometimes leaves on ("890mg", "2.5 g") but
- * refuses anything that would require a guess ("<1", "trace", "N/A").
+ * A finite, non-negative number, or null. Accepts a numeric string with the
+ * field's own unit left on ("890mg" for an Mg field, "2.5 g" for a G field)
+ * but refuses anything that would require a guess or a conversion: "<1",
+ * "trace", "N/A", a Daily Value percentage ("39%"), or a different unit
+ * ("0.9 g" of sodium, "300mcg") — a wrong number is worse than a missing one.
+ * With no `unit` (servings per container) only a bare number is accepted.
  */
-export function legibleNumberOrNull(value: unknown): number | null {
+export function legibleNumberOrNull(value: unknown, unit?: UnitFamily): number | null {
   if (typeof value === 'number') {
     return Number.isFinite(value) && value >= 0 ? value : null;
   }
   if (typeof value === 'string') {
-    const match = /^\s*(\d+(?:\.\d+)?)\s*(mg|mcg|g|kcal|cal|calories|%)?\s*$/i.exec(value);
+    const match = /^\s*(\d+(?:\.\d+)?)\s*([a-z]+)?\s*$/i.exec(value);
     if (!match) return null;
+    const suffix = match[2]?.toLowerCase();
+    if (suffix !== undefined) {
+      if (unit === undefined || !UNIT_SPELLINGS[unit].includes(suffix)) return null;
+    }
     const parsed = Number(match[1]);
     return Number.isFinite(parsed) ? parsed : null;
   }

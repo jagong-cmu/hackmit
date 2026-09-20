@@ -75,9 +75,16 @@ final class FoodLabelCommandParserTests: XCTestCase {
             "is there anything on my calendar today", "is there a meeting today",
             "remember where i parked", "where did i park",
             "does this have", "how much", "read",
+            "what else do i have today", "what else is on my calendar",
         ] {
             XCTAssertNil(parse(phrase), "must not claim \"\(phrase)\"")
         }
+    }
+
+    func testWhatElseIsExactOnly() {
+        XCTAssertEqual(parse("what else"), .question(.whatElse))
+        XCTAssertEqual(parse("What else?"), .question(.whatElse))
+        XCTAssertNil(parse("what else do i have today"), "the calendar's, not ours")
     }
 
     func testEmptyCommandIsNotClaimed() {

@@ -273,6 +273,28 @@ final class FoodLabelSpeechTests: XCTestCase {
         )
     }
 
+    func testContainsQuestionForANonAllergenNeedsTheIngredientList() throws {
+        // The unreadable fixture has a product name but no ingredients: "I
+        // don't see grapefruit" would be a claim about text we never read.
+        let unreadable = try FoodLabelFixtures.unreadable()
+        XCTAssertEqual(
+            FoodLabelSpeech.questionScript(.contains("grapefruit"), label: unreadable, profile: .avoiding("grapefruit")),
+            "I couldn't read the ingredients on this label, so I can't tell."
+        )
+        // …but a hit in the product name is still a yes.
+        let named = FoodLabelResult.label(name: "Ruby Red Grapefruit Soda", ingredients: [])
+        XCTAssertEqual(
+            FoodLabelSpeech.questionScript(.contains("grapefruit"), label: named, profile: .avoiding("grapefruit")),
+            "Yes — it contains Ruby Red Grapefruit Soda, which you avoid."
+        )
+        // …and with a real list, "I don't see it" is earned.
+        let clean = FoodLabelResult.label(name: "Orange Soda", ingredients: ["carbonated water", "orange juice"])
+        XCTAssertEqual(
+            FoodLabelSpeech.questionScript(.contains("grapefruit"), label: clean, profile: .avoiding("grapefruit")),
+            "I don't see grapefruit in the ingredients."
+        )
+    }
+
     // MARK: - Vocabulary
 
     func testScriptsNeverUseForbiddenWords() throws {

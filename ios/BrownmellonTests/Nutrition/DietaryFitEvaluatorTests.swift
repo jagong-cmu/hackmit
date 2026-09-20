@@ -182,6 +182,35 @@ final class DietaryFitEvaluatorTests: XCTestCase {
         XCTAssertEqual(evaluate(.glutenFreeOnly, .label(ingredients: ["buckwheat flour", "water"])).verdict, .fits)
     }
 
+    func testWheatInContainsStatementIsGlutenEvenWhenIngredientsDidNotRead() {
+        // The ingredient list was illegible but the manufacturer's allergen
+        // summary says wheat — that must not come back as "fits".
+        let a = evaluate(.glutenFreeOnly, .label(ingredients: [], contains: "Contains: wheat, milk"))
+        XCTAssertEqual(a.verdict, .doesNotFit)
+        XCTAssertEqual(severities(a, .gluten), [.high])
+        XCTAssertEqual(a.findings[0].spoken, "It contains wheat, which has gluten")
+    }
+
+    func testWheatInContainsStatementIsGlutenWhenIngredientsNameItIndirectly() {
+        let a = evaluate(.glutenFreeOnly, .label(ingredients: ["enriched flour", "sugar", "salt"], contains: "Contains: wheat"))
+        XCTAssertEqual(a.verdict, .doesNotFit)
+        XCTAssertEqual(severities(a, .gluten), [.high])
+    }
+
+    func testContainsStatementWithoutWheatCannotClearGluten() {
+        // "Contains:" lists only the FDA nine — it says nothing about barley,
+        // rye or malt, so with no ingredient list the check is still unreadable.
+        let a = evaluate(.glutenFreeOnly, .label(ingredients: [], contains: "Contains: milk"))
+        XCTAssertEqual(a.verdict, .unknown)
+        XCTAssertEqual(severities(a, .gluten), [.unreadable])
+    }
+
+    func testGlutenFreeClaimDecidesEvenWhenIngredientsDidNotRead() {
+        let a = evaluate(.glutenFreeOnly, .label(ingredients: [], claims: ["Gluten Free"]))
+        XCTAssertEqual(a.verdict, .fits, "the claim is the big print; it answers the question on its own")
+        XCTAssertTrue(a.findings.isEmpty)
+    }
+
     // MARK: - Allergies
 
     func testAllergenInContainsStatementIsHigh() {
@@ -232,6 +261,32 @@ final class DietaryFitEvaluatorTests: XCTestCase {
         let a = evaluate(.avoiding("grapefruit"), .label(name: nil, ingredients: []))
         XCTAssertEqual(a.verdict, .unknown)
         XCTAssertEqual(severities(a, .avoid), [.unreadable])
+    }
+
+    func testAvoidWithProductNameButNoIngredientsIsStillUnreadable() {
+        // Reading the name off the front doesn't tell us what's inside: a
+        // statin patient avoiding grapefruit must not hear "fits" here.
+        let a = evaluate(.avoiding("grapefruit"), .label(name: "Citrus Blend Juice", ingredients: []))
+        XCTAssertEqual(a.verdict, .unknown)
+        XCTAssertEqual(severities(a, .avoid), [.unreadable])
+    }
+
+    func testAvoidWordInProductNameIsHighEvenWhenIngredientsDidNotRead() {
+        let a = evaluate(.avoiding("grapefruit"), .label(name: "Ruby Red Grapefruit Soda", ingredients: []))
+        XCTAssertEqual(a.verdict, .doesNotFit)
+        XCTAssertEqual(severities(a, .avoid), [.high])
+    }
+
+    func testAvoidIsUnreadableWhenTheOnlyIngredientEntryIsAnAdvisory() {
+        let a = evaluate(.avoiding("grapefruit"), .label(ingredients: ["May contain tree nuts"]))
+        XCTAssertEqual(a.verdict, .unknown)
+        XCTAssertEqual(severities(a, .avoid), [.unreadable])
+    }
+
+    func testUnreadableFixtureIsUnknownForAnAvoidList() throws {
+        let a = evaluate(.avoiding("grapefruit"), try FoodLabelFixtures.unreadable())
+        XCTAssertEqual(a.verdict, .unknown, "the fixture has a product name but no ingredients")
+        XCTAssertEqual(a.findings.map(\.restriction), [.avoid])
     }
 
     func testAvoidWordAbsentFits() {

@@ -275,16 +275,23 @@ enum DietaryFitEvaluator {
     // MARK: - Ingredient rules
 
     private static func glutenFindings(_ label: FoodLabelResult) -> [Finding] {
-        guard label.hasReadableIngredients else { return [unreadable(.gluten)] }
         // A printed gluten-free claim overrides the keyword table — "wheat
-        // starch" in a certified gluten-free product is processed to be safe
-        // for the label's purposes, and the manufacturer is on the hook.
+        // starch" in a certified gluten-free product is processed to meet the
+        // gluten-free standard, and the manufacturer is on the hook. The claim
+        // is the big print, so it decides even when the small print didn't read.
         if IngredientMatcher.hasGlutenFreeClaim(label.claims) { return [] }
-        guard let match = IngredientMatcher.glutenMatch(in: label.ingredients) else { return [] }
-        return [Finding(
-            severity: .high, restriction: .gluten, subject: .product,
-            predicate: "contains \(FoodLabelSpeech.spokenIngredient(match.keyword)), which has gluten"
-        )]
+        // "Contains: wheat" counts even when the ingredient list wasn't legible
+        // or names the grain indirectly ("enriched flour").
+        if let match = IngredientMatcher.glutenMatch(in: label) {
+            return [Finding(
+                severity: .high, restriction: .gluten, subject: .product,
+                predicate: "contains \(FoodLabelSpeech.spokenIngredient(match.keyword)), which has gluten"
+            )]
+        }
+        // A "Contains:" statement lists only the FDA nine — it can't rule out
+        // barley, rye or malt. Clearing a label needs the ingredient list itself.
+        guard label.hasIngredientList else { return [unreadable(.gluten)] }
+        return []
     }
 
     private static func allergyFindings(_ allergen: Allergen, _ label: FoodLabelResult) -> [Finding] {
@@ -319,12 +326,19 @@ enum DietaryFitEvaluator {
     }
 
     private static func avoidFindings(_ word: String, _ label: FoodLabelResult) -> [Finding] {
-        guard label.hasReadableIngredients || label.productName != nil else { return [unreadable(.avoid)] }
-        guard IngredientMatcher.avoidMatch(word, in: label) != nil else { return [] }
-        return [Finding(
-            severity: .high, restriction: .avoid, subject: .product,
-            predicate: "contains \(FoodLabelSpeech.spokenIngredient(word)), which you avoid"
-        )]
+        // A hit anywhere — ingredients, product name, "Contains:" — is a
+        // finding even when the rest of the label didn't read.
+        if IngredientMatcher.avoidMatch(word, in: label) != nil {
+            return [Finding(
+                severity: .high, restriction: .avoid, subject: .product,
+                predicate: "contains \(FoodLabelSpeech.spokenIngredient(word)), which you avoid"
+            )]
+        }
+        // But a readable product name can't *clear* an avoid word: "no
+        // grapefruit" needs the ingredient list itself (PRD § 10d: no
+        // ingredients read → unreadable).
+        guard label.hasIngredientList else { return [unreadable(.avoid)] }
+        return []
     }
 
     private static func unreadable(_ restriction: DietaryRestriction) -> Finding {

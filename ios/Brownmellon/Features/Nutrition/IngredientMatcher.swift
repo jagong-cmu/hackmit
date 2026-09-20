@@ -194,6 +194,18 @@ enum IngredientMatcher {
         firstMatch(of: glutenKeywords, in: splitAdvisories(ingredients).ingredients)
     }
 
+    /// The first gluten keyword anywhere the label declares composition: the
+    /// "Contains:" statement (which names wheat even when the ingredient list
+    /// says only "enriched flour", or wasn't legible at all) and then the
+    /// ingredients themselves.
+    static func glutenMatch(in label: FoodLabelResult) -> Match? {
+        if let statement = stripContainsLeadIn(label.containsStatement),
+           let match = firstMatch(of: glutenKeywords, in: [statement]) {
+            return match
+        }
+        return glutenMatch(in: label.ingredients)
+    }
+
     /// The first phosphate additive in the ingredients, or nil.
     static func phosphateMatch(in ingredients: [String]) -> Match? {
         firstMatch(of: phosphateKeywords, in: splitAdvisories(ingredients).ingredients)

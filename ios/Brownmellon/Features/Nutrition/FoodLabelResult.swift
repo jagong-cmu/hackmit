@@ -155,4 +155,12 @@ struct FoodLabelResult: Codable, Equatable {
     var hasReadableIngredients: Bool {
         !ingredients.isEmpty || !(containsStatement ?? "").trimmingCharacters(in: .whitespaces).isEmpty
     }
+
+    /// `true` when the ingredient list itself was read — not counting a
+    /// "Contains:" statement (which names only the FDA nine) or "may contain"
+    /// advisories. Rules that look for anything else (gluten grains, the
+    /// caregiver's avoid words) can only clear a label when this is true.
+    var hasIngredientList: Bool {
+        !IngredientMatcher.splitAdvisories(ingredients).ingredients.isEmpty
+    }
 }

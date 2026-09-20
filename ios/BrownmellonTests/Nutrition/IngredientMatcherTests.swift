@@ -117,6 +117,26 @@ final class IngredientMatcherTests: XCTestCase {
         }
     }
 
+    func testGlutenMatchOnALabelReadsTheContainsStatementFirst() {
+        let statementOnly = FoodLabelResult.label(ingredients: [], contains: "Contains: wheat, soy")
+        XCTAssertEqual(
+            IngredientMatcher.glutenMatch(in: statementOnly),
+            IngredientMatcher.Match(keyword: "wheat", source: "wheat, soy")
+        )
+        let indirect = FoodLabelResult.label(ingredients: ["enriched flour", "sugar"], contains: "Contains: wheat")
+        XCTAssertEqual(IngredientMatcher.glutenMatch(in: indirect)?.keyword, "wheat")
+        let fromIngredients = FoodLabelResult.label(ingredients: ["rice", "barley malt"], contains: "Contains: milk")
+        XCTAssertEqual(IngredientMatcher.glutenMatch(in: fromIngredients)?.keyword, "barley")
+        XCTAssertNil(IngredientMatcher.glutenMatch(in: FoodLabelResult.label(ingredients: ["rice"], contains: "Contains: milk")))
+    }
+
+    func testHasIngredientListIgnoresContainsStatementAndAdvisories() {
+        XCTAssertTrue(FoodLabelResult.label(ingredients: ["water"]).hasIngredientList)
+        XCTAssertFalse(FoodLabelResult.label(ingredients: [], contains: "Contains: milk").hasIngredientList)
+        XCTAssertFalse(FoodLabelResult.label(ingredients: ["May contain peanuts"]).hasIngredientList)
+        XCTAssertTrue(FoodLabelResult.label(ingredients: [], contains: "Contains: milk").hasReadableIngredients, "the allergy rule still reads the statement")
+    }
+
     func testGlutenFreeClaimSpellings() {
         XCTAssertTrue(IngredientMatcher.hasGlutenFreeClaim(["Gluten-Free"]))
         XCTAssertTrue(IngredientMatcher.hasGlutenFreeClaim(["certified gluten free"]))

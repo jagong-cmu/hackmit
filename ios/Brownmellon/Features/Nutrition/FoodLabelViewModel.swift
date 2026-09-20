@@ -110,13 +110,15 @@ final class FoodLabelViewModel: ObservableObject, VoiceCommandHandler {
             label = fresh
             fromCache = false
         }
-        lastCommandAt = now()
 
         guard label.found else {
+            // Not stamped as a command "on this label": a check that follows
+            // a failed capture must re-photograph, not replay the older label.
             lastAssessment = FitAssessment(verdict: .notALabel, findings: [], servingsPerContainer: nil)
             await speak(FoodLabelSpeech.notALabelScript)
             return
         }
+        lastCommandAt = now()
 
         let profile = self.profile
         var text: String

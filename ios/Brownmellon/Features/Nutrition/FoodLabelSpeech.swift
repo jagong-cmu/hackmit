@@ -517,7 +517,6 @@ enum FoodLabelSpeech {
             }
         }
 
-        guard label.hasReadableIngredients || label.productName != nil else { return couldNotReadIngredients }
         if let match = IngredientMatcher.avoidMatch(word, in: label) {
             var text = "Yes — it contains \(spokenIngredient(match.source))"
             if avoided { text += ", which you avoid" }
@@ -528,6 +527,9 @@ enum FoodLabelSpeech {
         if IngredientMatcher.containsSubstring(word, in: advisories) != nil {
             return "The label says it may contain \(spokenWord)."
         }
+        // "I don't see it" is only true if the ingredient list was actually
+        // read — a product name alone can't answer for what's inside.
+        guard label.hasIngredientList else { return couldNotReadIngredients }
         return "I don't see \(spokenWord) in the ingredients."
     }
 

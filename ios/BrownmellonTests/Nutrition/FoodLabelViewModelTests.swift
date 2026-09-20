@@ -138,6 +138,27 @@ final class FoodLabelViewModelTests: XCTestCase {
         XCTAssertEqual(glasses.spoken[1], "890 milligrams of sodium per serving — that's more than half of your daily limit.")
     }
 
+    func testCheckAfterAFailedCaptureRephotographsInsteadOfReplayingTheOldLabel() async throws {
+        // Soup at t=0; a wall at t=100 (not a label); a new package at t=130.
+        // The wall was not "a command on this label", so the 60 s same-label
+        // window must not make the third check replay the soup verdict.
+        backend.results = [try FoodLabelFixtures.soup(), try FoodLabelFixtures.notALabel(), try FoodLabelFixtures.beans()]
+        let vm = makeViewModel()
+        await vm.checkFood()
+        XCTAssertEqual(vm.lastAssessment?.verdict, .doesNotFit)
+
+        advance(100)
+        await vm.checkFood()
+        XCTAssertEqual(glasses.spoken[1], FoodLabelSpeech.notALabelScript)
+
+        advance(30)
+        await vm.checkFood()
+        XCTAssertEqual(glasses.captureCount, 3, "a fresh photo, not the cached soup")
+        XCTAssertEqual(vm.lastAssessment?.verdict, .fits)
+        XCTAssertFalse(glasses.spoken[2].hasPrefix(FoodLabelSpeech.cachePrefix), glasses.spoken[2])
+        XCTAssertTrue(glasses.spoken[2].contains("Del Monte"), glasses.spoken[2])
+    }
+
     func testWhatElseNeverTakesAPhoto() async {
         let vm = makeViewModel()
         await vm.run(.question(.whatElse))

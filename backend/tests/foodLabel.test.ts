@@ -9,6 +9,7 @@ import {
   normalizeFoodLabel,
   parseModelOutput,
   stripFences,
+  unitFor,
 } from '../api/food-label.ts';
 
 // Importing the endpoint never needs GEMINI_API_KEY: the Gemini client is
@@ -123,31 +124,62 @@ test('missing nutrient keys read as null, never as zero', () => {
   assert.ok(FoodLabelSchema.safeParse(result).success);
 });
 
-test('numbers left as strings with units are parsed; anything that needs a guess is null', () => {
-  assert.equal(legibleNumberOrNull(890), 890);
-  assert.equal(legibleNumberOrNull(0), 0);
+test('numbers left as strings with the field\'s own unit are parsed; anything that needs a guess is null', () => {
+  assert.equal(legibleNumberOrNull(890, 'mg'), 890);
+  assert.equal(legibleNumberOrNull(0, 'g'), 0);
   assert.equal(legibleNumberOrNull(2.5), 2.5);
-  assert.equal(legibleNumberOrNull('890mg'), 890);
-  assert.equal(legibleNumberOrNull('2.5 g'), 2.5);
-  assert.equal(legibleNumberOrNull('60 calories'), 60);
-  assert.equal(legibleNumberOrNull('<1g'), null);
-  assert.equal(legibleNumberOrNull('trace'), null);
-  assert.equal(legibleNumberOrNull('N/A'), null);
-  assert.equal(legibleNumberOrNull(''), null);
-  assert.equal(legibleNumberOrNull(-5), null);
-  assert.equal(legibleNumberOrNull(Number.NaN), null);
-  assert.equal(legibleNumberOrNull(Number.POSITIVE_INFINITY), null);
-  assert.equal(legibleNumberOrNull(null), null);
-  assert.equal(legibleNumberOrNull(undefined), null);
-  assert.equal(legibleNumberOrNull(true), null);
-  assert.equal(legibleNumberOrNull({}), null);
+  assert.equal(legibleNumberOrNull('890', 'mg'), 890);
+  assert.equal(legibleNumberOrNull('890mg', 'mg'), 890);
+  assert.equal(legibleNumberOrNull('890 milligrams', 'mg'), 890);
+  assert.equal(legibleNumberOrNull('2.5 g', 'g'), 2.5);
+  assert.equal(legibleNumberOrNull('60 calories', 'cal'), 60);
+  assert.equal(legibleNumberOrNull('60 kcal', 'cal'), 60);
+  assert.equal(legibleNumberOrNull('2.5'), 2.5, 'servings per container: a bare number');
+  assert.equal(legibleNumberOrNull('<1g', 'g'), null);
+  assert.equal(legibleNumberOrNull('trace', 'g'), null);
+  assert.equal(legibleNumberOrNull('N/A', 'mg'), null);
+  assert.equal(legibleNumberOrNull('', 'mg'), null);
+  assert.equal(legibleNumberOrNull(-5, 'mg'), null);
+  assert.equal(legibleNumberOrNull(Number.NaN, 'mg'), null);
+  assert.equal(legibleNumberOrNull(Number.POSITIVE_INFINITY, 'mg'), null);
+  assert.equal(legibleNumberOrNull(null, 'mg'), null);
+  assert.equal(legibleNumberOrNull(undefined, 'mg'), null);
+  assert.equal(legibleNumberOrNull(true, 'mg'), null);
+  assert.equal(legibleNumberOrNull({}, 'mg'), null);
+});
+
+test('a unit that does not match the field is a conversion, so it is null — never a silently wrong number', () => {
+  assert.equal(legibleNumberOrNull('39%', 'mg'), null, 'a Daily Value percentage is not an amount');
+  assert.equal(legibleNumberOrNull('0.9 g', 'mg'), null, 'grams in a milligram field would be 1000x off');
+  assert.equal(legibleNumberOrNull('300mcg', 'mg'), null, 'micrograms in a milligram field');
+  assert.equal(legibleNumberOrNull('890mg', 'g'), null, 'milligrams in a gram field');
+  assert.equal(legibleNumberOrNull('60 calories', 'g'), null);
+  assert.equal(legibleNumberOrNull('2.5 servings'), null, 'no unit family: only a bare number');
+});
+
+test('unitFor reads the unit off the nutrient key', () => {
+  assert.equal(unitFor('calories'), 'cal');
+  assert.equal(unitFor('sodiumMg'), 'mg');
+  assert.equal(unitFor('potassiumMg'), 'mg');
+  assert.equal(unitFor('totalCarbohydrateG'), 'g');
+  assert.equal(unitFor('transFatG'), 'g');
+  for (const key of NUTRIENT_KEYS) {
+    assert.ok(['mg', 'g', 'cal'].includes(unitFor(key)), key);
+  }
 });
 
 test('a stringly-typed nutrient block is coerced field by field', () => {
   const result = normalizeFoodLabel({
     found: true,
     productName: 'Crackers',
-    nutrients: { sodiumMg: '230mg', totalCarbohydrateG: '20 g', addedSugarsG: '<1g', proteinG: 'trace' },
+    nutrients: {
+      sodiumMg: '230mg',
+      totalCarbohydrateG: '20 g',
+      addedSugarsG: '<1g',
+      proteinG: 'trace',
+      potassiumMg: '2%',
+      saturatedFatG: '500mg',
+    },
     ingredients: ['wheat flour'],
     fullText: 'Crackers.',
   });
@@ -155,6 +187,8 @@ test('a stringly-typed nutrient block is coerced field by field', () => {
   assert.equal(result.nutrients.totalCarbohydrateG, 20);
   assert.equal(result.nutrients.addedSugarsG, null);
   assert.equal(result.nutrients.proteinG, null);
+  assert.equal(result.nutrients.potassiumMg, null, 'a percentage is not milligrams');
+  assert.equal(result.nutrients.saturatedFatG, null, 'milligrams are not grams');
 });
 
 test('non-string entries in arrays are dropped and strings are trimmed', () => {

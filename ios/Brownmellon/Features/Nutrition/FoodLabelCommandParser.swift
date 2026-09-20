@@ -87,7 +87,8 @@ enum FoodLabelCommandParser {
         if matches(text, fatPhrases) { return .question(.fat) }
         if matches(text, expirationPhrases) { return .question(.expiration) }
         if matches(text, preparationPhrases) { return .question(.preparation) }
-        if matches(text, whatElsePhrases) { return .question(.whatElse) }
+        // Exact only: "what else do I have today" is the calendar's, not ours.
+        if whatElsePhrases.contains(where: { normalize($0) == text }) { return .question(.whatElse) }
 
         // "does this have <x>" / "is there <x> in this" — the one open slot.
         if let word = containsQuery(text) { return .question(.contains(word)) }
