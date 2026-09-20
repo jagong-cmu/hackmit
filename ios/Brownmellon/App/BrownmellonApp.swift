@@ -20,6 +20,7 @@ struct BrownmellonApp: App {
     // and passed to *both* its view and the assistant's `handlers:`, so the
     // voice path and the on-screen path act on the same instance:
     // private let foodLabel = FoodLabelViewModel(glasses: glasses, ...)
+    private let memory: MemoryCommandHandler
 
     /// The one "Hey Dojo" pipeline. Started once at launch below and never
     /// stopped — listening is app-lifetime, not a tab's.
@@ -42,11 +43,17 @@ struct BrownmellonApp: App {
         datSession = glasses
         #endif
 
+        memory = MemoryCommandHandler(
+            glasses: glasses,
+            store: MemoryStore(store: secureStore),
+            vision: VisionBackendClient(),
+            recall: RecallClient(endpoint: Self.backendBaseURL.appendingPathComponent("api/recall"))
+        )
         assistant = VoiceAssistant(
             glasses: glasses,
             calendar: calendarService,
             backendBaseURL: Self.backendBaseURL,
-            handlers: []   // v2: [memory, foodLabel, soundAlerts]
+            handlers: [memory]   // v2: [memory, foodLabel, soundAlerts]
         )
         scheduling = SchedulingViewModel(assistant: assistant)
     }
@@ -80,6 +87,9 @@ struct BrownmellonApp: App {
 
                 AdScamCheckView(glasses: glasses)
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
+
+                MemoryView(viewModel: MemoryViewModel(handler: memory, assistant: assistant))
+                    .tabItem { Label("Memory", systemImage: "brain.head.profile") }
 
                 NavigationStack {
                     SetupHomeView(store: secureStore)

@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev",
+    "test": "node --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
     "@google/genai": "^0.15.0",
