@@ -49,6 +49,8 @@ final class CrossFeatureRoutingTests: XCTestCase {
         ("check this ad", .calendar),
         ("how do I make this appointment", .calendar),
         ("cancel my appointment", .calendar),
+        ("cancel that", .calendar),                   // never a false "Okay." from memory
+        ("read this label to me", .food),            // a polite tail on a food command stays food
     ]
 
     override func setUp() async throws {

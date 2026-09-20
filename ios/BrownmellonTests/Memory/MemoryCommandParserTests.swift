@@ -246,9 +246,13 @@ final class MemoryCommandParserTests: XCTestCase {
 
     /// "Forget it" is how people cancel. It must never delete anything.
     func testForgetItAndNeverMindAreNonDestructive() {
-        for phrase in ["forget it", "Forget it.", "forget about it", "never mind", "nevermind", "never mind that", "cancel", "cancel that"] {
+        for phrase in ["forget it", "Forget it.", "forget about it", "never mind", "nevermind", "never mind that"] {
             XCTAssertEqual(parse(phrase), .dismiss, phrase)
         }
+        // "cancel …" after a reminder is a calendar request; an "Okay." here
+        // would falsely confirm it.
+        XCTAssertNil(parse("cancel"))
+        XCTAssertNil(parse("cancel that"))
         XCTAssertNil(parse("cancel my appointment"), "calendar phrasing stays with the calendar")
     }
 

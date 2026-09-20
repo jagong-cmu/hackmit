@@ -84,6 +84,8 @@ final class FoodLabelCommandParserTests: XCTestCase {
     }
 
     func testPolitenessIsStrippedBeforeMatching() {
+        XCTAssertEqual(parse("read this label to me"), .read(.headline), "a polite tail on a food command stays food")
+        XCTAssertEqual(parse("read the ingredients to me"), .read(.ingredients))
         XCTAssertEqual(parse("please read the label"), .read(.headline))
         XCTAssertEqual(parse("can you read this label"), .read(.headline))
         XCTAssertEqual(parse("could you please read the ingredients"), .read(.ingredients))

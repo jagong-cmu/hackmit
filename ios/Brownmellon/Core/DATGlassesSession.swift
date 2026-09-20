@@ -359,9 +359,13 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
                     if nsError.code != 1110 && nsError.code != 216 {
                         self.lastError = "Speech recognition: \(error.localizedDescription)"
                     }
-                    // The task died before the settle interval elapsed — hand
-                    // over whatever the wearer had said rather than losing it.
-                    self.settler.flush()
+                    // "No speech detected" means the wearer stopped talking — a
+                    // partial still pending is a complete sentence the settle
+                    // timer hadn't reached yet, so hand it over. Any other
+                    // ending (network error, the ~1-minute cap) may have cut a
+                    // sentence in half; acting on half a command is worse than
+                    // asking the wearer to repeat it, so that text is dropped.
+                    if nsError.code == 1110 { self.settler.flush() }
                     self.tearDownRecognition(deactivateSession: false)
                     let generationAfterTearDown = self.recognitionGeneration
                     try? await Task.sleep(nanoseconds: 500_000_000)
@@ -381,6 +385,10 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
                 try audioEngine.start()
             } catch {
                 lastError = "Couldn't start the microphone: \(error.localizedDescription)"
+                // Don't leave the task just created orphaned: a later start()
+                // would share its generation, and its eventual error callback
+                // would tear the live task down.
+                tearDownRecognition(deactivateSession: false)
                 isListening = false
             }
         }

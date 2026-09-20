@@ -87,6 +87,14 @@ final class VoiceAssistant: ObservableObject {
     /// to the coordinator (works on both sessions). The real voice path is
     /// exercised via `MockGlassesSession.simulateTranscript` in tests.
     func handle(_ typed: String) async {
+        // Speech can't arrive while a command runs (the mic is closed), but a
+        // tap on "Try it" can — say so instead of silently dropping it.
+        guard !coordinator.isHandlingCommand else {
+            lastResponse = Self.busyMessage
+            return
+        }
         await coordinator.handle(WakeWordDetector.normalize(typed))
     }
+
+    static let busyMessage = "One moment — I'm still working on the last one."
 }

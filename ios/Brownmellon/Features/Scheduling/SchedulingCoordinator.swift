@@ -17,7 +17,10 @@ final class SchedulingCoordinator {
     /// Whether `start()` is in effect — the *intent* to listen. The mic itself
     /// is closed while a command runs (see `handle`).
     private var isListening = false
-    private var isHandlingCommand = false
+    /// True from the moment a command is accepted until its reply has been
+    /// spoken. The mic is closed for that window; a typed command that arrives
+    /// during it is declined (see `VoiceAssistant.handle`).
+    private(set) var isHandlingCommand = false
 
     init(
         glasses: GlassesSession,

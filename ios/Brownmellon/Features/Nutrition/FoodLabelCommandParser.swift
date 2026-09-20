@@ -78,7 +78,9 @@ enum FoodLabelCommandParser {
     /// ours: "can I have this read to me" is Feature 4, "how do I make this
     /// appointment" is the calendar.
     static let vetoWords: Set<String> = ["appointment", "appointments", "meeting", "meetings", "schedule", "calendar", "remind", "reminder"]
-    static let vetoPhrases = ["read to me", "read this to me", "to me"]
+    /// Whole Read-To-Me requests. Not a bare "to me": "read this label to me"
+    /// is still a food command with a polite tail.
+    static let vetoPhrases = ["read this to me", "read to me", "read it to me", "have this read to me", "read this letter to me"]
 
     static func parse(_ command: String) -> FoodLabelCommand? {
         let text = strippingLeadIns(normalize(command))

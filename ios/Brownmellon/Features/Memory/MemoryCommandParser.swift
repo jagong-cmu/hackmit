@@ -140,15 +140,16 @@ enum MemoryCommandParser {
 
     static let forgetAllConfirmation = "yes forget everything"
 
-    /// Whole commands that mean "cancel / never mind". Non-destructive.
+    /// Whole commands that mean "never mind". Non-destructive. Deliberately
+    /// not "cancel": after "remind me to take my pills at 8", a "cancel that"
+    /// answered with "Okay." would falsely confirm a calendar change this
+    /// feature can't make — it must keep reaching the calendar parser.
     static let dismissPhrases: Set<String> = [
         "forget it",
         "forget about it",
         "never mind",
         "nevermind",
         "never mind that",
-        "cancel",
-        "cancel that",
     ]
 
     /// "where's my car …" followed by one of these is about the car's
