@@ -19,7 +19,7 @@ struct BrownmellonApp: App {
     // A feature view model that is also a VoiceCommandHandler is owned here
     // and passed to *both* its view and the assistant's `handlers:`, so the
     // voice path and the on-screen path act on the same instance:
-    // private let foodLabel = FoodLabelViewModel(glasses: glasses, ...)
+    private let foodLabel: FoodLabelViewModel
 
     /// The one "Hey Dojo" pipeline. Started once at launch below and never
     /// stopped — listening is app-lifetime, not a tab's.
@@ -42,11 +42,12 @@ struct BrownmellonApp: App {
         datSession = glasses
         #endif
 
+        foodLabel = FoodLabelViewModel(glasses: glasses, store: secureStore)
         assistant = VoiceAssistant(
             glasses: glasses,
             calendar: calendarService,
             backendBaseURL: Self.backendBaseURL,
-            handlers: []   // v2: [memory, foodLabel, soundAlerts]
+            handlers: [foodLabel]   // v2 order: [memory, foodLabel, soundAlerts]
         )
         scheduling = SchedulingViewModel(assistant: assistant)
     }
@@ -80,6 +81,9 @@ struct BrownmellonApp: App {
 
                 AdScamCheckView(glasses: glasses)
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
+
+                FoodLabelView(viewModel: foodLabel)
+                    .tabItem { Label("Check Food", systemImage: "carrot") }
 
                 NavigationStack {
                     SetupHomeView(store: secureStore)

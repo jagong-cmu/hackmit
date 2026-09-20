@@ -12,6 +12,7 @@ struct SetupHomeView: View {
             NavigationLink("Emergency Contacts") {
                 EmergencyContactSetupView(store: store)
             }
+            NavigationLink("Diet") { DietSetupView(store: store) }
         }
         .navigationTitle("Setup")
     }

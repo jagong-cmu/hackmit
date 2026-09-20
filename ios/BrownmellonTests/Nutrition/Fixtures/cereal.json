@@ -1,0 +1,35 @@
+{
+  "found": true,
+  "productName": "Cheerios",
+  "servingSize": "1 1/2 cups (39g)",
+  "servingsPerContainer": 12,
+  "nutrients": {
+    "calories": 140,
+    "totalFatG": 2.5,
+    "saturatedFatG": 0.5,
+    "transFatG": 0,
+    "cholesterolMg": 0,
+    "sodiumMg": 190,
+    "totalCarbohydrateG": 23,
+    "dietaryFiberG": 4,
+    "totalSugarsG": 2,
+    "addedSugarsG": 2,
+    "proteinG": 5,
+    "potassiumMg": 250,
+    "phosphorusMg": null
+  },
+  "ingredients": [
+    "Whole grain oats",
+    "Corn starch",
+    "Sugar",
+    "Salt",
+    "Tripotassium phosphate",
+    "Vitamin E (mixed tocopherols) added to preserve freshness"
+  ],
+  "containsStatement": null,
+  "mayContainStatement": null,
+  "claims": ["Gluten Free", "Whole Grain", "No Artificial Flavors or Colors"],
+  "preparation": null,
+  "expiration": "Better if used by 14 AUG 2027",
+  "fullText": "Cheerios. Toasted Whole Grain Oat Cereal. Gluten Free. Nutrition Facts. About 12 servings per container. Serving size 1 1/2 cups (39g). Calories 140. Total Fat 2.5g 3%. Saturated Fat 0.5g 3%. Trans Fat 0g. Cholesterol 0mg 0%. Sodium 190mg 8%. Total Carbohydrate 23g 8%. Dietary Fiber 4g 14%. Total Sugars 2g. Includes 2g Added Sugars 4%. Protein 5g. Potassium 250mg 6%. Ingredients: Whole Grain Oats, Corn Starch, Sugar, Salt, Tripotassium Phosphate, Vitamin E (mixed tocopherols) Added to Preserve Freshness. Better if used by 14 AUG 2027."
+}

@@ -1,0 +1,28 @@
+{
+  "found": true,
+  "productName": "Del Monte No Salt Added Green Beans",
+  "servingSize": "1/2 cup (121g)",
+  "servingsPerContainer": 3.5,
+  "nutrients": {
+    "calories": 20,
+    "totalFatG": 0,
+    "saturatedFatG": 0,
+    "transFatG": 0,
+    "cholesterolMg": 0,
+    "sodiumMg": 10,
+    "totalCarbohydrateG": 4,
+    "dietaryFiberG": 2,
+    "totalSugarsG": 2,
+    "addedSugarsG": 0,
+    "proteinG": 1,
+    "potassiumMg": 100,
+    "phosphorusMg": null
+  },
+  "ingredients": ["Green beans", "Water"],
+  "containsStatement": null,
+  "mayContainStatement": null,
+  "claims": ["No Salt Added", "Non-GMO"],
+  "preparation": "Heat and serve.",
+  "expiration": null,
+  "fullText": "Del Monte Fresh Cut Green Beans. No Salt Added. Nutrition Facts. About 3.5 servings per container. Serving size 1/2 cup (121g). Calories 20. Total Fat 0g 0%. Saturated Fat 0g 0%. Trans Fat 0g. Cholesterol 0mg 0%. Sodium 10mg 0%. Total Carbohydrate 4g 1%. Dietary Fiber 2g 7%. Total Sugars 2g. Includes 0g Added Sugars 0%. Protein 1g. Potassium 100mg 2%. Ingredients: Green Beans, Water. Heat and serve."
+}

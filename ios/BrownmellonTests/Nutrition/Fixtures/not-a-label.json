@@ -1,0 +1,28 @@
+{
+  "found": false,
+  "productName": null,
+  "servingSize": null,
+  "servingsPerContainer": null,
+  "nutrients": {
+    "calories": null,
+    "totalFatG": null,
+    "saturatedFatG": null,
+    "transFatG": null,
+    "cholesterolMg": null,
+    "sodiumMg": null,
+    "totalCarbohydrateG": null,
+    "dietaryFiberG": null,
+    "totalSugarsG": null,
+    "addedSugarsG": null,
+    "proteinG": null,
+    "potassiumMg": null,
+    "phosphorusMg": null
+  },
+  "ingredients": [],
+  "containsStatement": null,
+  "mayContainStatement": null,
+  "claims": [],
+  "preparation": null,
+  "expiration": null,
+  "fullText": ""
+}
