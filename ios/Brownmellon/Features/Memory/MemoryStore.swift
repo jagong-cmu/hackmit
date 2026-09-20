@@ -42,6 +42,16 @@ final class MemoryStore: ObservableObject {
         notes.first { $0.kind == .parking }
     }
 
+    /// Newest general note that talks about the car ("the car is in lot B") —
+    /// the fallback answer to "where's my car" when nothing was saved as parking.
+    var newestGeneralMentioningCar: MemoryNote? {
+        notes.first { note in
+            note.kind == .general && note.text.split(separator: " ").contains { word in
+                word == "car" || word.hasPrefix("park")
+            }
+        }
+    }
+
     var newest: MemoryNote? { notes.first }
 
     /// The most recent `count` notes, newest first — what general recall

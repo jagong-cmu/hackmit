@@ -103,8 +103,10 @@ final class MemoryVoicePathTests: XCTestCase {
         let saved = await hear("hey dojo remember i parked in section b")
         XCTAssertEqual(saved, "Got it. I'll remember: I parked in section B.")
 
-        // The wake-word listener debounces the same utterance for 2 s.
-        try? await Task.sleep(nanoseconds: 2_100_000_000)
+        // The mic is closed while the confirmation is spoken and reopened
+        // afterwards; the follow-up waits for that, as a real one would.
+        let listening = await mock.waitUntilListening()
+        XCTAssertTrue(listening, "listening must resume after a command")
         clock.advance(by: 20)
 
         let recalled = await hear("hey dojo where did i park")

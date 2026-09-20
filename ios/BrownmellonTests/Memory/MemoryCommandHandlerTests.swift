@@ -190,6 +190,28 @@ final class MemoryCommandHandlerTests: XCTestCase {
         XCTAssertEqual(location.requestCount, 1)
     }
 
+    /// "Remember the car is in lot B" is a general note, but it is the honest
+    /// answer to "where's my car" when nothing was saved as parking.
+    func testParkingRecallFallsBackToAGeneralNoteAboutTheCar() async throws {
+        try store.add(MemoryNote(kind: .general, text: "keys are on the hook", createdAt: clock.now.addingTimeInterval(-5)))
+        try store.add(MemoryNote(kind: .general, text: "the car is in lot b", createdAt: clock.now.addingTimeInterval(-20)))
+
+        let line = await say("where s my car")
+
+        XCTAssertEqual(line, "You told me just now: The car is in lot B.")
+        XCTAssertEqual(recall.hitCount, 0)
+    }
+
+    /// "Forget it" is a cancel, never a delete.
+    func testForgetItDeletesNothing() async throws {
+        try store.add(MemoryNote(kind: .parking, text: "i parked in section b", createdAt: clock.now))
+
+        let line = await say("forget it")
+
+        XCTAssertEqual(line, "Okay.")
+        XCTAssertEqual(store.notes.count, 1, "the parking note must survive a 'forget it'")
+    }
+
     func testParkingRecallOfATextNoteSaysJustNow() async throws {
         try store.add(MemoryNote(kind: .parking, text: "i parked in section b", createdAt: clock.now.addingTimeInterval(-10)))
 

@@ -14,7 +14,10 @@ final class SchedulingCoordinator {
     /// Consulted in order before the calendar intent parser; the first one
     /// to return true owns the command (see `VoiceCommandHandler`).
     private let handlers: [VoiceCommandHandler]
+    /// Whether `start()` is in effect — the *intent* to listen. The mic itself
+    /// is closed while a command runs (see `handle`).
     private var isListening = false
+    private var isHandlingCommand = false
 
     init(
         glasses: GlassesSession,
@@ -47,20 +50,24 @@ final class SchedulingCoordinator {
         glasses.stopListening()
     }
 
-    /// A live recognizer keeps appending to one transcript, so without this
-    /// the wearer's next sentence would arrive glued to the command we just
-    /// acted on ("…parked in section b hey dojo what do i have today") and the
-    /// wake-word detector would hand back the wrong command. Restarting gives
-    /// the next utterance an empty transcript. No-op unless `start()` is live.
-    private func restartListeningForNextUtterance() {
-        guard isListening else { return }
-        glasses.stopListening()
-        start()
-    }
-
     /// Exposed for tests and for a Setup-Mode "try it" button.
+    ///
+    /// The mic is closed for the whole command and reopened afterwards. Three
+    /// reasons: a live recognizer keeps appending to one transcript, so the
+    /// wearer's next sentence would otherwise arrive glued to this command
+    /// ("…parked in section b hey dojo what do i have today"); anything said
+    /// while a slow handler runs (a companion's "hold on, it's taking a
+    /// photo") would be transcribed onto the command and dispatched again;
+    /// and our own reply would be transcribed too. Reopening starts the next
+    /// utterance from an empty transcript.
     func handle(_ command: String) async {
-        defer { restartListeningForNextUtterance() }
+        guard !isHandlingCommand else { return }
+        isHandlingCommand = true
+        if isListening { glasses.stopListening() }
+        defer {
+            isHandlingCommand = false
+            if isListening { start() }
+        }
 
         for handler in handlers {
             if await handler.handle(command) {

@@ -84,17 +84,13 @@ struct BrownmellonApp: App {
                 SchedulingView(viewModel: scheduling, glasses: glasses)
                     .tabItem { Label("Schedule", systemImage: "calendar") }
 
-                AppointmentCardScanView(glasses: glasses, calendar: calendarService)
-                    .tabItem { Label("Scan Card", systemImage: "doc.text.viewfinder") }
-
-                ReadToMeView(glasses: glasses)
-                    .tabItem { Label("Read To Me", systemImage: "text.viewfinder") }
-
-                AdScamCheckView(glasses: glasses)
-                    .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
-
-                FoodLabelView(viewModel: foodLabel)
-                    .tabItem { Label("Check Food", systemImage: "carrot") }
+                // Scan Card / Read To Me / Check Ad / Check Food share one tab so
+                // the bar stays under iOS's five-item limit and Setup isn't
+                // folded into "More".
+                NavigationStack {
+                    CameraFeaturesView(glasses: glasses, calendar: calendarService, foodLabel: foodLabel)
+                }
+                .tabItem { Label("Camera", systemImage: "camera.viewfinder") }
 
                 MemoryView(viewModel: memoryView)
                     .tabItem { Label("Memory", systemImage: "brain.head.profile") }

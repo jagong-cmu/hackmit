@@ -65,6 +65,33 @@ final class TranscriptSettlerTests: XCTestCase {
         XCTAssertEqual(delivered, [])
     }
 
+    /// The recognizer re-reports identical text while it firms up timings;
+    /// that must not keep pushing delivery out.
+    func testRepeatedIdenticalPartialDoesNotRestartTheClock() async {
+        var delivered: [String] = []
+        let settler = TranscriptSettler(settleInterval: 0.12) { delivered.append($0) }
+
+        settler.ingest("hey dojo read the label", isFinal: false)
+        try? await Task.sleep(for: .milliseconds(80))
+        settler.ingest("hey dojo read the label", isFinal: false)   // same text, 80 ms in
+        try? await Task.sleep(for: .milliseconds(80))               // 160 ms since the first
+
+        XCTAssertEqual(delivered, ["hey dojo read the label"], "delivered ~120 ms after the FIRST report, not the repeat")
+    }
+
+    func testFlushDeliversPendingTextImmediately() {
+        var delivered: [String] = []
+        let settler = TranscriptSettler(settleInterval: 10) { delivered.append($0) }
+
+        settler.ingest("hey dojo where did i park", isFinal: false)
+        XCTAssertEqual(delivered, [])
+        settler.flush()
+
+        XCTAssertEqual(delivered, ["hey dojo where did i park"])
+        settler.flush()
+        XCTAssertEqual(delivered.count, 1, "nothing pending, nothing delivered")
+    }
+
     func testResetCancelsAPendingDelivery() async {
         var delivered: [String] = []
         let settler = TranscriptSettler(settleInterval: 0.05) { delivered.append($0) }

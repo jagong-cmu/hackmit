@@ -76,9 +76,20 @@ final class FoodLabelCommandParserTests: XCTestCase {
             "remember where i parked", "where did i park",
             "does this have", "how much", "read",
             "what else do i have today", "what else is on my calendar",
+            // Starts like ours, but the tail says otherwise.
+            "can i have this read to me", "how do i make this appointment", "can i eat this before my meeting",
         ] {
             XCTAssertNil(parse(phrase), "must not claim \"\(phrase)\"")
         }
+    }
+
+    func testPolitenessIsStrippedBeforeMatching() {
+        XCTAssertEqual(parse("please read the label"), .read(.headline))
+        XCTAssertEqual(parse("can you read this label"), .read(.headline))
+        XCTAssertEqual(parse("could you please read the ingredients"), .read(.ingredients))
+        XCTAssertEqual(parse("Can I eat this, please?"), .check)
+        XCTAssertEqual(parse("would you check this food"), .check)
+        XCTAssertNil(parse("please"), "courtesy alone is not a command")
     }
 
     func testWhatElseIsExactOnly() {

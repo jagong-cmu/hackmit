@@ -92,11 +92,20 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     // MARK: - Audio
 
     private let synthesizer = AVSpeechSynthesizer()
-    private var speakContinuation: CheckedContinuation<Void, Never>?
+    /// One continuation per in-flight utterance, keyed by the utterance the
+    /// synthesizer hands back. AVSpeechSynthesizer queues utterances, so a
+    /// sound alert landing while a reply is being read must resume *its own*
+    /// caller — a single slot would resume the wrong one and leak the other.
+    private var speakContinuations: [ObjectIdentifier: CheckedContinuation<Void, Never>] = [:]
     private let audioEngine = AVAudioEngine()
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
+    /// Bumped whenever a recognition task is torn down or listening stops.
+    /// A callback from an older task (its "cancelled by us" error arrives
+    /// asynchronously) compares its generation and is dropped, so a restart
+    /// can never leave two live recognizers behind.
+    private var recognitionGeneration = 0
     private var onTranscript: ((String) -> Void)?
     /// Partial results arrive many times per sentence; consumers get one
     /// delivery per utterance, once the text has settled (see TranscriptSettler).
@@ -231,13 +240,17 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         onSpeak?(text)
         Self.configureAudioSession()
 
+        // The synthesizer never reports finishing an utterance it never
+        // started; don't park a continuation on one.
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
 
-        // Await completion so callers (e.g. SchedulingCoordinator resetting its
-        // wake-word cooldown) don't run ahead of the audio actually finishing.
+        // Await completion so callers (e.g. SchedulingCoordinator reopening the
+        // mic) don't run ahead of the audio actually finishing.
         await withCheckedContinuation { continuation in
-            speakContinuation = continuation
+            speakContinuations[ObjectIdentifier(utterance)] = continuation
             synthesizer.speak(utterance)
         }
     }
@@ -255,11 +268,19 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         isListening = false
         onTranscript = nil
         settler.reset()
-        tearDownRecognition(deactivateSession: true)
+        // Keep the audio session active: the coordinator stops and restarts
+        // listening around every command, and deactivating here would drop and
+        // renegotiate the glasses' HFP link each time (audible click, ~1 s of
+        // dead mic). The engine itself still stops when no audio tap needs it.
+        tearDownRecognition(deactivateSession: false)
     }
 
     private func beginRecognition() async {
         guard isListening else { return }
+        // If listening is stopped/restarted while we await the permissions
+        // below, a newer beginRecognition owns the session — this one bows out
+        // rather than starting a second recognizer.
+        let startedGeneration = recognitionGeneration
 
         // Ask for the mic explicitly (rather than relying on the engine start to
         // prompt) so a denial shows up as a readable error instead of a silent
@@ -269,6 +290,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             isListening = false
             return
         }
+        guard isListening, recognitionGeneration == startedGeneration else { return }
 
         let authorized = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0 == .authorized) }
@@ -278,6 +300,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             isListening = false
             return
         }
+        guard isListening, recognitionGeneration == startedGeneration else { return }
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             lastError = SessionError.speechRecognizerUnavailable.localizedDescription
             isListening = false
@@ -317,9 +340,10 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         }
         fanout.set(request: request)
 
+        let generation = recognitionGeneration
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor [weak self] in
-                guard let self, self.isListening else { return }
+                guard let self, self.isListening, self.recognitionGeneration == generation else { return }
                 if let result {
                     let text = result.bestTranscription.formattedString
                     self.lastTranscript = text
@@ -335,8 +359,14 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
                     if nsError.code != 1110 && nsError.code != 216 {
                         self.lastError = "Speech recognition: \(error.localizedDescription)"
                     }
+                    // The task died before the settle interval elapsed — hand
+                    // over whatever the wearer had said rather than losing it.
+                    self.settler.flush()
                     self.tearDownRecognition(deactivateSession: false)
+                    let generationAfterTearDown = self.recognitionGeneration
                     try? await Task.sleep(nanoseconds: 500_000_000)
+                    // A stop/start during the pause owns the restart now.
+                    guard self.recognitionGeneration == generationAfterTearDown else { return }
                     await self.beginRecognition()
                 } else if result?.isFinal == true {
                     self.tearDownRecognition(deactivateSession: false)
@@ -357,6 +387,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     }
 
     private func tearDownRecognition(deactivateSession: Bool) {
+        recognitionGeneration += 1
         recognitionTask?.cancel()
         recognitionTask = nil
         fanout.set(request: nil)
@@ -632,15 +663,16 @@ private final class ResumeOnce: @unchecked Sendable {
 
 extension DATGlassesSession: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.finishSpeaking() }
+        Task { @MainActor in self.finishSpeaking(utterance) }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor in self.finishSpeaking() }
+        Task { @MainActor in self.finishSpeaking(utterance) }
     }
 
-    private func finishSpeaking() {
-        speakContinuation?.resume()
-        speakContinuation = nil
+    /// Idempotent per utterance: whichever callback arrives resumes exactly
+    /// the caller that queued it.
+    private func finishSpeaking(_ utterance: AVSpeechUtterance) {
+        speakContinuations.removeValue(forKey: ObjectIdentifier(utterance))?.resume()
     }
 }

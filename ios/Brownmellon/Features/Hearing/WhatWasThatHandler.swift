@@ -17,10 +17,36 @@ enum WhatWasThatResponder {
     static let disabledReply = "Sound alerts are turned off. Your helper can turn them on in Setup."
     static let nothingReply = "I didn't notice anything unusual in the last minute."
 
-    /// `command` arrives lower-cased and punctuation-stripped
-    /// (`WakeWordDetector.normalize`).
-    static func claims(_ command: String) -> Bool {
-        claimedPhrases.contains { command.contains($0) }
+    /// Words that may follow a claimed phrase and still mean "that sound":
+    /// "what was that noise just now", "did you hear that beeping".
+    static let soundTailWords: Set<String> = [
+        "sound", "sounds", "noise", "noises", "beep", "beeping", "beeps", "ringing", "ring", "bang",
+        "banging", "alarm", "buzzing", "buzz", "just", "now", "a", "minute", "second", "ago", "earlier",
+        "outside", "there", "again", "please",
+    ]
+
+    /// Never ours: "what was that appointment again" is a calendar question.
+    static let calendarWords: Set<String> = ["appointment", "appointments", "meeting", "meetings", "schedule", "calendar"]
+
+    /// `command` is normalized (lower-cased, punctuation stripped) here too,
+    /// so the typed Simulator field behaves like the wake-word path. Claims a
+    /// command only when it is one of the phrases, optionally followed by
+    /// sound words — "what was that address I told you" is somebody else's.
+    /// Hesitations people put in front of a question ("um, what was that?").
+    static let leadInWords: Set<String> = ["um", "uh", "so", "hey", "okay", "ok", "well", "hmm", "oh", "wait", "please"]
+
+    static func claims(_ rawCommand: String) -> Bool {
+        var words = WakeWordDetector.normalize(rawCommand).split(separator: " ").map(String.init)
+        if words.contains(where: { calendarWords.contains($0) }) { return false }
+        while let first = words.first, leadInWords.contains(first) { words.removeFirst() }
+        let command = words.joined(separator: " ")
+
+        for phrase in claimedPhrases {
+            guard command == phrase || command.hasPrefix(phrase + " ") else { continue }
+            let tail = command.dropFirst(phrase.count).split(separator: " ").map(String.init)
+            if tail.allSatisfy({ soundTailWords.contains($0) }) { return true }
+        }
+        return false
     }
 
     static func reply(isEnabled: Bool, observation: RecentSoundObservation?, now: Date) -> String {

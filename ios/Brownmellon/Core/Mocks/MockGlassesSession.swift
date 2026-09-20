@@ -42,6 +42,14 @@ final class MockGlassesSession: NSObject, GlassesSession {
     /// instead of presenting the photo picker.
     var stubbedPhoto: UIImage?
 
+    /// How `speak` completes. `.realtime` plays TTS and awaits it, like the
+    /// glasses — the Simulator demo. `.instant` reports `onSpeak` and returns
+    /// at once, so tests that await whole commands don't sit through speech
+    /// (or, on a Simulator with no audio device, through the fallback deadline).
+    enum SpeechTiming { case realtime, instant }
+    var speechTiming: SpeechTiming = MockGlassesSession.isRunningTests ? .instant : .realtime
+    private static let isRunningTests = NSClassFromString("XCTestCase") != nil
+
     override init() {
         super.init()
         synthesizer.delegate = self
@@ -57,6 +65,7 @@ final class MockGlassesSession: NSObject, GlassesSession {
 
     func speak(_ text: String) async {
         onSpeak?(text)
+        guard speechTiming == .realtime else { return }
 
         // The synthesizer never reports finishing an utterance it never
         // started; don't park a continuation on one.
@@ -101,6 +110,8 @@ final class MockGlassesSession: NSObject, GlassesSession {
     private(set) var startListeningCount = 0
 
     func startListening(onTranscript: @escaping (String) -> Void) {
+        // Same guard as DATGlassesSession: a redundant start is ignored.
+        guard !isListening else { return }
         self.onTranscript = onTranscript
         isListening = true
         startListeningCount += 1
@@ -109,6 +120,17 @@ final class MockGlassesSession: NSObject, GlassesSession {
     func stopListening() {
         onTranscript = nil
         isListening = false
+    }
+
+    /// Test hook — the coordinator closes the mic while a command runs and
+    /// reopens it afterwards; a test that sends a follow-up command waits on
+    /// this instead of guessing how long the reply took to speak.
+    func waitUntilListening(timeout: TimeInterval = 10) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !isListening, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return isListening
     }
 
     /// Test/demo hook — pretend the wearer said something out loud.

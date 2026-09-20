@@ -84,9 +84,10 @@ final class FoodLabelVoicePathTests: XCTestCase {
         _ = try await nextSpoken(after: 0)
         XCTAssertEqual(glasses.captureCount, 1)
 
-        // The wake-word listener debounces repeated transcripts for 2 s; a
-        // real follow-up comes after that anyway.
-        try await Task.sleep(nanoseconds: 2_200_000_000)
+        // The mic is closed while the reply is spoken and reopened afterwards;
+        // a real follow-up can only arrive once it is.
+        let listening = await mock.waitUntilListening()
+        XCTAssertTrue(listening, "listening must resume after a command")
         mock.simulateTranscript("hey dojo read the ingredients")
 
         let text = try await nextSpoken(after: 1)

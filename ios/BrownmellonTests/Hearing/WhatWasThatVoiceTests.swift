@@ -149,11 +149,16 @@ final class WhatWasThatVoiceTests: XCTestCase {
             XCTAssertTrue(WhatWasThatResponder.claims(phrase), phrase)
             XCTAssertTrue(WhatWasThatResponder.claims("um \(phrase) just now"), "embedded: \(phrase)")
         }
+        XCTAssertTrue(WhatWasThatResponder.claims("What was that?"), "typed, un-normalized input is normalized here too")
+        XCTAssertTrue(WhatWasThatResponder.claims("did you hear that beeping"))
         // Other features' phrases must fall through untouched.
         for other in [
             "what time is it", "did you hear the news", "what was the weather", "",
             "remind me to take my pills at nine", "read this to me", "scan this", "scan this card", "check this ad",
             "can i eat this", "remember where i parked", "who is this",
+            // "what was that <thing>" questions belong to the calendar or memory, not the sound log.
+            "what was that appointment again", "what was that appointment time", "what was that address i told you",
+            "what was that i asked you to remember", "what was that you said about my car",
         ] {
             XCTAssertFalse(WhatWasThatResponder.claims(other), other)
         }

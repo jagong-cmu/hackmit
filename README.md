@@ -19,7 +19,7 @@ This is the **unified project** — one Xcode project, one Vercel backend, all t
 
 Physical-device builds use the real Meta DAT-backed `GlassesSession`; Simulator builds use mocks. Google Calendar still needs a Google Cloud OAuth client ID, so calendar features continue to use an in-memory mock by default.
 
-**Voice routing (v2 foundation, `prds/PRD-foundation-v2.md`):** `VoiceAssistant` owns the one "Hey Dojo" pipeline for the app's lifetime (every tab, not just Schedule). Commands go through a `VoiceCommandHandler` chain — memory → food label → sound alerts — before falling back to the calendar intent parser. On hardware, `DATGlassesSession` only forwards a transcript once it has stopped changing for ~1 s (`TranscriptSettler`), and the coordinator restarts listening after each acted-on command so utterances never accumulate into one transcript. Every v2 feature ships voice-path tests (`MockGlassesSession.simulateTranscript("hey dojo …")` → asserted spoken reply); the on-screen buttons are a Simulator convenience.
+**Voice routing (v2 foundation, `prds/PRD-foundation-v2.md`):** `VoiceAssistant` owns the one "Hey Dojo" pipeline for the app's lifetime (every tab, not just Schedule). Commands go through a `VoiceCommandHandler` chain — memory → food label → sound alerts — before falling back to the calendar intent parser. On hardware, `DATGlassesSession` only forwards a transcript once it has stopped changing for ~1 s (`TranscriptSettler`), and the coordinator closes the mic for the duration of a command and reopens it afterwards, so a companion's remark or our own reply is never transcribed onto the command and the next utterance starts from an empty transcript. `CrossFeatureRoutingTests` pins the whole chain: every claimed phrase reaches exactly one owner, calendar phrasing always falls through. Every v2 feature ships voice-path tests (`MockGlassesSession.simulateTranscript("hey dojo …")` → asserted spoken reply); the on-screen buttons are a Simulator convenience.
 
 ## Layout
 
@@ -99,7 +99,7 @@ xcodegen generate
 open Brownmellon.xcodeproj
 ```
 
-Run on Simulator with 7 tabs (Schedule / Scan Card / Read To Me / Check Ad / Check Food / Memory / Setup). Physical-device builds add a Glasses tab for DAT registration and connection. The app talks to the deployed backend by default; point `BROWNMELLON_BACKEND_URL` at `vercel dev` locally instead if needed.
+Run on Simulator with 4 tabs — Schedule, Camera (Check Food / Read To Me / Scan Card / Check Ad), Memory, Setup (Diet, Sound Alerts). Physical-device builds add a Glasses tab for DAT registration and connection. The app talks to the deployed backend by default; point `BROWNMELLON_BACKEND_URL` at `vercel dev` locally instead if needed.
 
 On Simulator there is no mic: type a command into the Schedule tab's field (it runs the same path a spoken "Hey Dojo, …" would), or use the Setup → Sound Alerts "Play: smoke alarm / doorbell" buttons, which feed bundled clips through the same audio tap the glasses would.
 

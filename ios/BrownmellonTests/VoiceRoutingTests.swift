@@ -177,11 +177,12 @@ final class VoiceRoutingTests: XCTestCase {
 
     // MARK: - One utterance per transcript
 
-    /// A live recognizer appends every sentence to one growing transcript.
-    /// After acting on a command the coordinator restarts listening so the
+    /// A live recognizer appends every sentence to one growing transcript, and
+    /// keeps transcribing while a handler runs. The coordinator closes the
+    /// mic for the duration of a command and reopens it afterwards, so the
     /// next sentence starts from an empty transcript instead of arriving as
     /// "…parked in section b hey dojo what do i have today".
-    func testActedOnCommandRestartsListening() async {
+    func testMicIsClosedDuringACommandAndReopenedAfter() async {
         let handler = SpyHandler(returning: true)
         let assistant = VoiceAssistant(
             glasses: mock,
@@ -190,18 +191,20 @@ final class VoiceRoutingTests: XCTestCase {
             handlers: [handler]
         )
         let delivered = expectation(description: "handler received the command")
-        handler.onHandle = { delivered.fulfill() }
+        handler.onHandle = { [mock] in
+            XCTAssertFalse(mock!.isListening, "the mic is closed while the handler runs")
+            delivered.fulfill()
+        }
 
         assistant.start()
         XCTAssertEqual(mock.startListeningCount, 1)
 
         mock.simulateTranscript("hey dojo test phrase")
         await fulfillment(of: [delivered], timeout: 5)
-        // The restart happens as `handle` returns, after the handler ran.
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        let reopened = await mock.waitUntilListening()
 
-        XCTAssertEqual(mock.startListeningCount, 2, "listening restarts once per acted-on command")
-        XCTAssertTrue(mock.isListening, "…and is live again afterwards")
+        XCTAssertTrue(reopened, "listening resumes once the command is done")
+        XCTAssertEqual(mock.startListeningCount, 2, "exactly one restart per acted-on command")
 
         // A second command on the fresh transcript still reaches the handler.
         let deliveredAgain = expectation(description: "second command received")

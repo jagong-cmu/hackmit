@@ -34,6 +34,8 @@ enum MemorySpeech {
     static let noParkingToForget = "I don't have a parking spot saved."
     static let nothingToConfirm = "Nothing to confirm. To clear your notes, say: Hey Dojo, forget everything."
     static let forgetHelp = "I can forget your parking spot, the last thing you told me, or everything. Which would you like?"
+    /// "Forget it" / "never mind" — nothing is deleted.
+    static let dismissed = "Okay."
     static let couldNotForget = "Sorry, I couldn't forget that. Please try again."
 
     static func forgotEverything(count: Int) -> String {

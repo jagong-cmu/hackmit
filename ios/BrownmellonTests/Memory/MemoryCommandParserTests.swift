@@ -243,4 +243,22 @@ final class MemoryCommandParserTests: XCTestCase {
         XCTAssertEqual(parse("don t forget that the car is in lot b"),
                        .save(text: "the car is in lot b", wantsParkingPhoto: false, isParking: false))
     }
+
+    /// "Forget it" is how people cancel. It must never delete anything.
+    func testForgetItAndNeverMindAreNonDestructive() {
+        for phrase in ["forget it", "Forget it.", "forget about it", "never mind", "nevermind", "never mind that", "cancel", "cancel that"] {
+            XCTAssertEqual(parse(phrase), .dismiss, phrase)
+        }
+        XCTAssertNil(parse("cancel my appointment"), "calendar phrasing stays with the calendar")
+    }
+
+    /// Asking about the car's *keys* is a general recall, not the parking spot.
+    func testCarAccessoriesAreNotParkingRecall() {
+        XCTAssertEqual(parse("where s my car keys"), .recall(question: "where s my car keys"))
+        XCTAssertEqual(parse("Where's my car keys?"), .recall(question: "where s my car keys"))
+        XCTAssertEqual(parse("where is my car key"), .recall(question: "where is my car key"))
+        XCTAssertEqual(parse("where did i leave my car keys"), .recall(question: "where did i leave my car keys"))
+        XCTAssertEqual(parse("where s my car charger"), .recall(question: "where s my car charger"))
+        XCTAssertEqual(parse("where s my car"), .recallParking, "…but the car itself is still parking")
+    }
 }

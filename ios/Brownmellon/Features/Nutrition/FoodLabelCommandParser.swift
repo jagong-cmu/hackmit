@@ -69,9 +69,24 @@ enum FoodLabelCommandParser {
             + preparationPhrases + whatElsePhrases).map(normalize)
     }
 
+    /// Lead-ins a polite speaker puts before the request; "please" may also
+    /// trail it. Stripped before matching so courtesy never sends a food
+    /// question to the calendar parser.
+    static let leadIns = ["please", "can you", "could you", "would you", "can you please", "could you please", "would you please"]
+
+    /// A command that mentions these is someone else's even if it starts like
+    /// ours: "can I have this read to me" is Feature 4, "how do I make this
+    /// appointment" is the calendar.
+    static let vetoWords: Set<String> = ["appointment", "appointments", "meeting", "meetings", "schedule", "calendar", "remind", "reminder"]
+    static let vetoPhrases = ["read to me", "read this to me", "to me"]
+
     static func parse(_ command: String) -> FoodLabelCommand? {
-        let text = normalize(command)
+        let text = strippingLeadIns(normalize(command))
         guard !text.isEmpty else { return nil }
+
+        let words = text.split(separator: " ").map(String.init)
+        if words.contains(where: { vetoWords.contains($0) }) { return nil }
+        if vetoPhrases.contains(where: { " \(text) ".contains(" \($0) ") }) { return nil }
 
         // Fixed phrases: the command is the phrase or starts with it ("how much
         // sodium is in this"). Longer phrases first so "read the nutrition
@@ -100,6 +115,23 @@ enum FoodLabelCommandParser {
     /// wake-word pipeline applies, so tests can pass either spelling.
     static func normalize(_ text: String) -> String {
         WakeWordDetector.normalize(text)
+    }
+
+    /// Drops one leading lead-in ("please", "can you", …) and a trailing
+    /// "please" from an already-normalized command.
+    static func strippingLeadIns(_ text: String) -> String {
+        var result = text
+        var stripped = true
+        while stripped {
+            stripped = false
+            for leadIn in leadIns.sorted(by: { $0.count > $1.count }) where result == leadIn || result.hasPrefix(leadIn + " ") {
+                result = String(result.dropFirst(leadIn.count)).trimmingCharacters(in: .whitespaces)
+                stripped = true
+                break
+            }
+        }
+        if result.hasSuffix(" please") { result = String(result.dropLast(" please".count)) }
+        return result
     }
 
     private static func matches(_ text: String, _ phrases: [String]) -> Bool {

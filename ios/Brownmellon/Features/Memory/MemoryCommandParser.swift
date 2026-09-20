@@ -18,6 +18,10 @@ enum MemoryCommand: Equatable {
     /// (the contract is "starts with forget") but never destructive — the
     /// handler asks which of the three it should do.
     case forgetUnrecognized
+    /// "forget it" / "never mind" — the everyday way to cancel, not a request
+    /// to delete anything. Claimed so the wearer hears a calm "Okay." instead
+    /// of the calendar parser's "Sorry, I didn't catch that."
+    case dismiss
 }
 
 /// Pure string classification for the memory feature (PRD-memory § Command
@@ -120,9 +124,10 @@ enum MemoryCommandParser {
         "all of it",
     ]
 
+    /// Never "it": "forget it" means "never mind" (see `dismissPhrases`), and
+    /// deleting a note on the universal cancel word is a trap.
     static let forgetLastPhrases: Set<String> = [
         "that",
-        "it",
         "the last thing",
         "the last one",
         "the last note",
@@ -135,6 +140,24 @@ enum MemoryCommandParser {
 
     static let forgetAllConfirmation = "yes forget everything"
 
+    /// Whole commands that mean "cancel / never mind". Non-destructive.
+    static let dismissPhrases: Set<String> = [
+        "forget it",
+        "forget about it",
+        "never mind",
+        "nevermind",
+        "never mind that",
+        "cancel",
+        "cancel that",
+    ]
+
+    /// "where's my car …" followed by one of these is about the car's
+    /// belongings, not where it is parked — general recall, not parking.
+    static let carAccessoryWords: Set<String> = [
+        "key", "keys", "seat", "seats", "charger", "door", "title", "insurance", "registration",
+        "payment", "wash", "manual", "remote", "fob",
+    ]
+
     static func parse(_ rawCommand: String) -> MemoryCommand? {
         // The voice path already normalized; the typed Simulator field did
         // not. Normalizing is idempotent, so do it unconditionally.
@@ -145,11 +168,12 @@ enum MemoryCommandParser {
         // not a recall — the PRD forbids claiming anything starting with it.
         if remainder(of: command, afterPrefix: "remind") != nil { return nil }
 
+        if dismissPhrases.contains(command) { return .dismiss }
         if let forget = parseForget(command) { return forget }
         if let save = parseSave(command) { return save }
 
         if mentionsCalendar(command) { return nil }
-        if containsAny(command, parkingRecallPhrases) { return .recallParking }
+        if containsAny(command, parkingRecallPhrases), !mentionsCarAccessory(command) { return .recallParking }
         if containsAny(command, directionsPhrases) { return .directionsToCar }
         if containsAny(command, generalRecallPhrases) { return .recall(question: command) }
         return nil
@@ -199,6 +223,11 @@ enum MemoryCommandParser {
 
     static func mentionsCalendar(_ text: String) -> Bool {
         words(text).contains { calendarWords.contains($0) }
+    }
+
+    /// "where's my car keys" is a question about keys.
+    static func mentionsCarAccessory(_ text: String) -> Bool {
+        words(text).contains { carAccessoryWords.contains($0) }
     }
 
     /// Whole-word containment: `phrase` must start and end on word

@@ -82,10 +82,11 @@ final class VoiceAssistant: ObservableObject {
     }
 
     /// Runs a command as if it had followed "Hey Dojo" — the Simulator/demo
-    /// "Try it" field. Goes straight to the coordinator (works on both
-    /// sessions); the real voice path is exercised via
-    /// `MockGlassesSession.simulateTranscript` in tests.
+    /// "Try it" field. Normalized exactly as the wake-word path normalizes
+    /// speech, so every handler sees the same shape either way; then straight
+    /// to the coordinator (works on both sessions). The real voice path is
+    /// exercised via `MockGlassesSession.simulateTranscript` in tests.
     func handle(_ typed: String) async {
-        await coordinator.handle(typed)
+        await coordinator.handle(WakeWordDetector.normalize(typed))
     }
 }

@@ -121,12 +121,28 @@ final class MockGlassesSessionTests: XCTestCase {
         XCTAssertFalse(mock.isSpeaking)
     }
 
+    /// Under XCTest the mock defaults to instant speech, so tests that await
+    /// whole commands never wait on TTS (or on the no-audio fallback deadline).
+    func testSpeechIsInstantUnderTests() async {
+        XCTAssertEqual(mock.speechTiming, .instant)
+        var spoken: [String] = []
+        mock.onSpeak = { spoken.append($0) }
+
+        let started = Date()
+        await mock.speak("This is a long reply with quite a few words in it, which would take a while to say out loud.")
+
+        XCTAssertEqual(spoken.count, 1)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 0.5)
+        XCTAssertFalse(mock.isSpeaking)
+    }
+
     /// Simulator audio comes and goes (headless CI, no output device). Whether
     /// the synthesizer finishes normally or never reports back, `speak` must
     /// return in bounded time and `isSpeaking` must clear — otherwise the
     /// coordinator and every handler awaiting speech would hang, and features
     /// that mute the mic while speaking would stay deaf.
     func testSpeakReturnsInBoundedTimeAndClearsIsSpeaking() async throws {
+        mock.speechTiming = .realtime   // the path the Simulator demo uses
         let done = expectation(description: "speak returned")
         Task {
             await mock.speak("Testing.")
@@ -141,6 +157,7 @@ final class MockGlassesSessionTests: XCTestCase {
     /// each resume their own caller — a single continuation slot would leak
     /// one of them and hang that caller for good.
     func testOverlappingSpeakCallsBothReturn() async throws {
+        mock.speechTiming = .realtime
         let first = expectation(description: "first speak returned")
         let second = expectation(description: "second speak returned")
         Task {

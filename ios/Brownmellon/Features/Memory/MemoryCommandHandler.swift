@@ -76,6 +76,8 @@ final class MemoryCommandHandler: VoiceCommandHandler {
             await confirmForgetAll()
         case .forgetUnrecognized:
             await glasses.speak(MemorySpeech.forgetHelp)
+        case .dismiss:
+            await glasses.speak(MemorySpeech.dismissed)
         }
         return true
     }
@@ -146,7 +148,9 @@ final class MemoryCommandHandler: VoiceCommandHandler {
     /// On-device only: the newest parking note, the current GPS fix, and
     /// arithmetic. Works with no network at all.
     private func recallParking() async {
-        guard let note = store.newestParking else {
+        // "Remember the car is in lot B" is saved as a general note; when asked
+        // "where's my car" with no parking note, that note is the honest answer.
+        guard let note = store.newestParking ?? store.newestGeneralMentioningCar else {
             await glasses.speak(MemorySpeech.noParkingSaved)
             return
         }
