@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import UIKit
 
 /// A single GPS reading good enough to find a car with.
 struct LocationFix: Equatable {
@@ -67,15 +68,30 @@ final class CoreLocationFixProvider: NSObject, LocationFixProvider {
     func requestFix() async -> LocationFixOutcome {
         var status = manager.authorizationStatus
         if status == .notDetermined {
+            // iOS shows the permission alert only while the app is in the
+            // foreground. A first save spoken to the glasses with the phone in
+            // a pocket would otherwise sit on a prompt nobody can see — and a
+            // save must never block on GPS. Skip the fix this once (not
+            // "denied": nothing was refused) and ask on the next foreground save.
+            guard Self.canPromptForAuthorization() else { return .unavailable }
             status = await requestAuthorization()
         }
 
         switch status {
         case .authorizedWhenInUse, .authorizedAlways:
             return await Self.oneShotFix(timeout: Self.timeout, maxHorizontalAccuracy: Self.maxHorizontalAccuracy)
+        case .notDetermined:
+            return .unavailable
         default:
             return .denied
         }
+    }
+
+    /// Whether the system would actually display the when-in-use alert now.
+    /// `.inactive` still counts as foreground (a system alert or the app
+    /// switcher is up); only `.background` cannot show it.
+    static func canPromptForAuthorization() -> Bool {
+        UIApplication.shared.applicationState != .background
     }
 
     private func requestAuthorization() async -> CLAuthorizationStatus {

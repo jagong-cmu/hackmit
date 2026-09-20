@@ -112,6 +112,14 @@ final class MemoryVoicePathTests: XCTestCase {
         XCTAssertEqual(MemoryIntentEndpointStub.hitCount, 0)
     }
 
+    func testPoliteSaveIsStillANote() async {
+        let line = await hear("hey dojo please remember i parked in section b")
+
+        XCTAssertEqual(line, "Got it. I'll remember: I parked in section B.")
+        XCTAssertEqual(store.notes.first?.text, "i parked in section b", "the courtesy word is not part of the note")
+        XCTAssertEqual(MemoryIntentEndpointStub.hitCount, 0, "politeness never sends a note to the calendar backend")
+    }
+
     func testWakeWordVariantsStillReachMemory() async {
         // ASR rarely spells the made-up wake word right; the detector's job,
         // not ours — but the whole path has to hold up.

@@ -62,6 +62,42 @@ final class MemoryCommandParserTests: XCTestCase {
                        "content beyond the photo phrases is a text note, not a photo")
     }
 
+    func testNamingTheCarStillMeansPhotographTheSpot() {
+        // "Remember where I parked my car" carries no fact to write down — the
+        // only useful thing to do is photograph the marker, same as the
+        // shorter phrasing.
+        let photo = MemoryCommand.save(text: "", wantsParkingPhoto: true, isParking: true)
+        for phrase in [
+            "remember where i parked my car",
+            "remember where i parked the car",
+            "remember where my car is parked",
+            "remember where i left my car",
+            "remember where the car is",
+        ] {
+            XCTAssertEqual(parse(phrase), photo, phrase)
+        }
+        XCTAssertEqual(parse("remember where i parked my car in lot c"),
+                       .save(text: "where i parked my car in lot c", wantsParkingPhoto: false, isParking: true),
+                       "extra words are content again")
+    }
+
+    func testPleaseIsStrippedButOtherLeadInsAreNot() {
+        XCTAssertEqual(parse("please remember i parked in lot c"),
+                       .save(text: "i parked in lot c", wantsParkingPhoto: false, isParking: true))
+        XCTAssertEqual(parse("remember i parked in lot c please"),
+                       .save(text: "i parked in lot c", wantsParkingPhoto: false, isParking: true),
+                       "a trailing please is not part of the note")
+        XCTAssertEqual(parse("please forget that"), .forgetLast)
+        XCTAssertEqual(parse("forget that please"), .forgetLast)
+        XCTAssertEqual(parse("please where did i put my keys"), .recall(question: "where did i put my keys"))
+        XCTAssertNil(parse("please"), "a bare please is nothing")
+        XCTAssertNil(parse("please remind me to take my pills at 8"), "politeness never turns a reminder into a note")
+        XCTAssertEqual(parse("can you remember where i parked"), .recallParking,
+                       "'can you' is a question, not a courtesy word — it stays a recall")
+        XCTAssertNil(parse("could you remember i parked in lot c"),
+                     "only 'please' is stripped; other lead-ins keep the literal contract")
+    }
+
     func testParkingWordVariantsMarkTheNoteAsParking() {
         XCTAssertEqual(parse("remember i parked on level three"),
                        .save(text: "i parked on level three", wantsParkingPhoto: false, isParking: true))

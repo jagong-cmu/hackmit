@@ -48,11 +48,24 @@ enum MemoryCommandParser {
         "where i m parked",
         "where im parked",
         "where i am parked",
+        "where i parked my car",
+        "where i parked the car",
+        "where my car is parked",
+        "where the car is parked",
+        "where i left my car",
+        "where i left the car",
         "my parking spot",
         "my parking space",
         "where my car is",
         "where the car is",
     ]
+
+    /// A courtesy word many wearers put before or after a command ("please
+    /// remember …", "forget that please"). Stripped before the prefix rules so
+    /// politeness never sends a note to the calendar parser. Only this one
+    /// word: "can you remember where I parked" is a *question* and must keep
+    /// reaching the recall rules, so lead-ins like "can you" are left alone.
+    static let courtesyWord = "please"
 
     static let parkingRecallPhrases = [
         "where did i park",
@@ -125,7 +138,7 @@ enum MemoryCommandParser {
     static func parse(_ rawCommand: String) -> MemoryCommand? {
         // The voice path already normalized; the typed Simulator field did
         // not. Normalizing is idempotent, so do it unconditionally.
-        let command = WakeWordDetector.normalize(rawCommand)
+        let command = strippingCourtesy(WakeWordDetector.normalize(rawCommand))
         guard !command.isEmpty else { return nil }
 
         // Feature 1's word. Even "remind me where I parked" is a reminder,
@@ -169,6 +182,15 @@ enum MemoryCommandParser {
     }
 
     // MARK: - Word-level helpers
+
+    /// Drops one leading and/or one trailing "please" (whole words) from an
+    /// already-normalized command. A bare "please" becomes "".
+    static func strippingCourtesy(_ command: String) -> String {
+        var tokens = words(command)
+        if tokens.first == courtesyWord { tokens.removeFirst() }
+        if tokens.last == courtesyWord { tokens.removeLast() }
+        return tokens.joined(separator: " ")
+    }
 
     /// "park", "parked", "parking", … as a whole word.
     static func mentionsParking(_ text: String) -> Bool {
