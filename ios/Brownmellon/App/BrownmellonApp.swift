@@ -15,10 +15,12 @@ struct BrownmellonApp: App {
     private let calendarService = MockCalendarService()
     private let secureStore = MockSecureLocalStore()
 
-    // v2 features (each PRD adds one line here, and one tab or Setup link).
-    // A feature view model that is also a VoiceCommandHandler is owned here
-    // and passed to *both* its view and the assistant's `handlers:`, so the
-    // voice path and the on-screen path act on the same instance:
+    // v2 features. A feature view model that is also a VoiceCommandHandler is
+    // owned here and passed to *both* its view and the assistant's
+    // `handlers:`, so the voice path and the on-screen path act on the same
+    // instance.
+    private let memory: MemoryCommandHandler
+    private let memoryView: MemoryViewModel
     private let foodLabel: FoodLabelViewModel
 
     /// The one "Hey Dojo" pipeline. Started once at launch below and never
@@ -42,13 +44,20 @@ struct BrownmellonApp: App {
         datSession = glasses
         #endif
 
+        memory = MemoryCommandHandler(
+            glasses: glasses,
+            store: MemoryStore(store: secureStore),
+            vision: VisionBackendClient(),
+            recall: RecallClient(endpoint: Self.backendBaseURL.appendingPathComponent("api/recall"))
+        )
         foodLabel = FoodLabelViewModel(glasses: glasses, store: secureStore)
         assistant = VoiceAssistant(
             glasses: glasses,
             calendar: calendarService,
             backendBaseURL: Self.backendBaseURL,
-            handlers: [foodLabel]   // v2 order: [memory, foodLabel, soundAlerts]
+            handlers: [memory, foodLabel]
         )
+        memoryView = MemoryViewModel(handler: memory, assistant: assistant)
         scheduling = SchedulingViewModel(assistant: assistant)
     }
 
@@ -84,6 +93,9 @@ struct BrownmellonApp: App {
 
                 FoodLabelView(viewModel: foodLabel)
                     .tabItem { Label("Check Food", systemImage: "carrot") }
+
+                MemoryView(viewModel: memoryView)
+                    .tabItem { Label("Memory", systemImage: "brain.head.profile") }
 
                 NavigationStack {
                     SetupHomeView(store: secureStore)
