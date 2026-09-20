@@ -11,17 +11,22 @@ final class SchedulingCoordinator {
     private let calendar: CalendarService
     private let intents: IntentClient
     private let listener: WakeWordListener
+    /// Consulted in order before the calendar intent parser; the first one
+    /// to return true owns the command (see `VoiceCommandHandler`).
+    private let handlers: [VoiceCommandHandler]
 
     init(
         glasses: GlassesSession,
         calendar: CalendarService,
         intents: IntentClient,
-        listener: WakeWordListener = WakeWordListener()
+        listener: WakeWordListener = WakeWordListener(),
+        handlers: [VoiceCommandHandler] = []
     ) {
         self.glasses = glasses
         self.calendar = calendar
         self.intents = intents
         self.listener = listener
+        self.handlers = handlers
     }
 
     func start() {
@@ -41,6 +46,13 @@ final class SchedulingCoordinator {
 
     /// Exposed for tests and for a Setup-Mode "try it" button.
     func handle(_ command: String) async {
+        for handler in handlers {
+            if await handler.handle(command) {
+                listener.reset()
+                return
+            }
+        }
+
         do {
             switch try await intents.parse(command: command) {
             case let .createEvent(title, start, end):

@@ -47,7 +47,7 @@ struct VisionBackendClient {
     }
 
     private func post<T: Decodable>(image: UIImage, mode: Mode) async throws -> T {
-        guard let jpegData = image.jpegData(compressionQuality: 0.85) else {
+        guard let jpegData = image.uploadJPEGData() else {
             throw VisionBackendError.imageEncodingFailed
         }
 

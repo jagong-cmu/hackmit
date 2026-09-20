@@ -47,9 +47,11 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Needed to connect to your Ray-Ban Meta glasses.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Brownmellon uses the glasses camera to scan appointment cards and read documents aloud.</string>
+	<string>Brownmellon uses the glasses camera to scan appointment cards, read documents and food labels aloud, and check ads.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Brownmellon saves your location when you ask it to remember where you parked.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Brownmellon listens for "Hey Dojo" to respond to voice commands.</string>
+	<string>Brownmellon listens for "Hey Dojo" and, if enabled, for household sounds like a smoke alarm or doorbell so it can tell you about them.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Brownmellon transcribes what you say after "Hey Dojo" so it can act on it. Recognition runs on-device.</string>
 	<key>UIBackgroundModes</key>

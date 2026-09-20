@@ -94,6 +94,14 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private var onTranscript: ((String) -> Void)?
 
+    /// The single input tap fans out to the speech recognizer and to any
+    /// `startAudioTap` consumer through this — it is the only thing the tap
+    /// closure touches, because that closure runs on the audio thread.
+    private let fanout = AudioTapFanout()
+    /// Main-actor mirror of "a `startAudioTap` handler is installed". While
+    /// true the engine outlives recognition restarts and `stopListening`.
+    private var audioTapInstalled = false
+
     override init() {
         let wearables = Wearables.shared
         self.wearables = wearables
@@ -206,6 +214,8 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
 
     // MARK: - GlassesSession: speak
 
+    var isSpeaking: Bool { synthesizer.isSpeaking }
+
     func speak(_ text: String) async {
         onSpeak?(text)
         Self.configureAudioSession()
@@ -273,20 +283,24 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         request.requiresOnDeviceRecognition = false
         recognitionRequest = request
 
-        let inputNode = audioEngine.inputNode
-        let format = inputNode.inputFormat(forBus: 0)
-        // A zero format (no mic / permission denied) makes installTap throw an
-        // uncatchable ObjC exception — same guard Meta's sample uses.
-        guard format.sampleRate > 0, format.channelCount > 0 else {
-            lastError = SessionError.noAudioInput.localizedDescription
-            isListening = false
-            return
+        // While a `startAudioTap` consumer is active the engine and its tap are
+        // already up and stay up across recognizer restarts — only the request
+        // in the fan-out changes. Otherwise (the original path) install the tap
+        // here and start the engine below.
+        let engineAlreadyRunning = audioEngine.isRunning
+        if !engineAlreadyRunning {
+            let inputNode = audioEngine.inputNode
+            let format = inputNode.inputFormat(forBus: 0)
+            // A zero format (no mic / permission denied) makes installTap throw an
+            // uncatchable ObjC exception — same guard Meta's sample uses.
+            guard format.sampleRate > 0, format.channelCount > 0 else {
+                lastError = SessionError.noAudioInput.localizedDescription
+                isListening = false
+                return
+            }
+            installFanoutTap(on: inputNode, format: format)
         }
-
-        inputNode.removeTap(onBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            request.append(buffer)
-        }
+        fanout.set(request: request)
 
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             Task { @MainActor [weak self] in
@@ -316,26 +330,100 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             }
         }
 
-        do {
-            audioEngine.prepare()
-            try audioEngine.start()
-        } catch {
-            lastError = "Couldn't start the microphone: \(error.localizedDescription)"
-            isListening = false
+        if !engineAlreadyRunning {
+            do {
+                audioEngine.prepare()
+                try audioEngine.start()
+            } catch {
+                lastError = "Couldn't start the microphone: \(error.localizedDescription)"
+                isListening = false
+            }
         }
     }
 
     private func tearDownRecognition(deactivateSession: Bool) {
         recognitionTask?.cancel()
         recognitionTask = nil
+        fanout.set(request: nil)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+        // A `startAudioTap` consumer keeps the engine, tap and session alive —
+        // the recognizer's ~1-minute restart cycle must stay invisible to it.
+        guard !audioTapInstalled else { return }
         if audioEngine.isRunning {
             audioEngine.stop()
         }
         audioEngine.inputNode.removeTap(onBus: 0)
         if deactivateSession {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    /// The one and only tap on the input node; every buffer goes through
+    /// `fanout`. Always removes any existing tap first — installing a second
+    /// tap on the same bus is an uncatchable ObjC exception. The closure
+    /// captures only the fan-out holder, never `self`: it runs on the audio
+    /// thread and must not touch main-actor state.
+    private func installFanoutTap(on inputNode: AVAudioInputNode, format: AVAudioFormat) {
+        let fanout = self.fanout
+        inputNode.removeTap(onBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, when in
+            fanout.deliver(buffer, when)
+        }
+    }
+
+    // MARK: - GlassesSession: audio tap
+
+    func startAudioTap(_ onBuffer: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void) {
+        fanout.set(handler: onBuffer)
+        audioTapInstalled = true
+        // If the wake-word listener already has the engine running, the fan-out
+        // alone is enough; otherwise bring the engine up for this consumer.
+        guard !audioEngine.isRunning else { return }
+        Task { await startEngineForAudioTap() }
+    }
+
+    func stopAudioTap() {
+        fanout.set(handler: nil)
+        audioTapInstalled = false
+        // Engine lifetime = (listening || tap installed): only tear it down
+        // when the wake-word listener isn't using it either.
+        guard !isListening else { return }
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.inputNode.removeTap(onBus: 0)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// Same permission / session / format guards as `beginRecognition`, minus
+    /// the speech-recognizer parts. Re-checks its preconditions after the
+    /// permission await because `beginRecognition` may have started the engine
+    /// (or `stopAudioTap` may have been called) in the meantime.
+    private func startEngineForAudioTap() async {
+        guard audioTapInstalled, !audioEngine.isRunning else { return }
+
+        guard await AVAudioApplication.requestRecordPermission() else {
+            lastError = "Microphone permission was denied — enable it in Settings → Brownmellon."
+            return
+        }
+        guard audioTapInstalled, !audioEngine.isRunning else { return }
+
+        Self.configureAudioSession()
+
+        let inputNode = audioEngine.inputNode
+        let format = inputNode.inputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            lastError = SessionError.noAudioInput.localizedDescription
+            return
+        }
+        installFanoutTap(on: inputNode, format: format)
+
+        do {
+            audioEngine.prepare()
+            try audioEngine.start()
+        } catch {
+            lastError = "Couldn't start the microphone: \(error.localizedDescription)"
         }
     }
 
@@ -465,6 +553,37 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             group.cancelAll()
             return result
         }
+    }
+}
+
+/// Audio-thread-safe fan-out for the single input tap. The tap closure calls
+/// `deliver` on the audio thread; the main actor swaps the recognizer request
+/// (every ~1 minute, when Apple ends a recognition task) and the
+/// `startAudioTap` handler underneath it without touching the tap itself.
+private final class AudioTapFanout: @unchecked Sendable {
+    private let lock = NSLock()
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var handler: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
+
+    func set(request: SFSpeechAudioBufferRecognitionRequest?) {
+        lock.lock()
+        self.request = request
+        lock.unlock()
+    }
+
+    func set(handler: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?) {
+        lock.lock()
+        self.handler = handler
+        lock.unlock()
+    }
+
+    func deliver(_ buffer: AVAudioPCMBuffer, _ when: AVAudioTime) {
+        lock.lock()
+        let r = request
+        let h = handler
+        lock.unlock()
+        r?.append(buffer)
+        h?(buffer, when)
     }
 }
 

@@ -1,38 +1,24 @@
 import Foundation
+import Combine
 
-/// Thin UI wrapper around `SchedulingCoordinator` (features 1–2, see PRD.md).
-/// The coordinator itself is UI-less by design — it only listens and speaks —
-/// so this exposes just enough state for a screen: whether it's listening,
-/// and a manual "try it" path for Simulator/demo use where there's no real
-/// mic input or speaker to watch.
+/// Thin UI adapter over the app-wide `VoiceAssistant` (features 1–2, see
+/// PRD.md). The assistant itself is UI-less by design — it only listens and
+/// speaks, for the app's whole lifetime — so this exposes just enough state
+/// for a screen: whether it's listening, what it last said, and a manual
+/// "try it" path for Simulator/demo use where there's no real mic input or
+/// speaker to watch.
 @MainActor
 final class SchedulingViewModel: ObservableObject {
     @Published var draftCommand: String = ""
     @Published private(set) var lastResponse: String?
     @Published private(set) var isListening = false
 
-    private let coordinator: SchedulingCoordinator
+    private let assistant: VoiceAssistant
 
-    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL) {
-        let intents = IntentClient(endpoint: backendBaseURL.appendingPathComponent("api/parse-intent"))
-        self.coordinator = SchedulingCoordinator(glasses: glasses, calendar: calendar, intents: intents)
-
-        let showResponse: (String) -> Void = { [weak self] text in self?.lastResponse = text }
-        if let mock = glasses as? MockGlassesSession {
-            mock.onSpeak = showResponse
-        } else if let real = glasses as? DATGlassesSession {
-            real.onSpeak = showResponse
-        }
-    }
-
-    func start() {
-        coordinator.start()
-        isListening = true
-    }
-
-    func stop() {
-        coordinator.stop()
-        isListening = false
+    init(assistant: VoiceAssistant) {
+        self.assistant = assistant
+        assistant.$lastResponse.assign(to: &$lastResponse)
+        assistant.$isListening.assign(to: &$isListening)
     }
 
     /// Exercises the same path a real "Hey Dojo" utterance would, without
@@ -41,6 +27,6 @@ final class SchedulingViewModel: ObservableObject {
         let command = draftCommand.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else { return }
         draftCommand = ""
-        await coordinator.handle(command)
+        await assistant.handle(command)
     }
 }

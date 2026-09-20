@@ -43,8 +43,9 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards and read documents aloud."
-        NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Dojo\" to respond to voice commands."
+        NSCameraUsageDescription: "Brownmellon uses the glasses camera to scan appointment cards, read documents and food labels aloud, and check ads."
+        NSMicrophoneUsageDescription: "Brownmellon listens for \"Hey Dojo\" and, if enabled, for household sounds like a smoke alarm or doorbell so it can tell you about them."
+        NSLocationWhenInUseUsageDescription: "Brownmellon saves your location when you ask it to remember where you parked."
         NSSpeechRecognitionUsageDescription: "Brownmellon transcribes what you say after \"Hey Dojo\" so it can act on it. Recognition runs on-device."
         NSBluetoothAlwaysUsageDescription: "Needed to connect to your Ray-Ban Meta glasses."
         # --- Meta DAT requirements (mirrors the SDK's getting-started guide) ---
