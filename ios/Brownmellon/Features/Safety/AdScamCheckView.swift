@@ -1,13 +1,9 @@
 import SwiftUI
 
-/// Manual-trigger scaffold UI for Feature 5, same caveat as Vision's
-/// screens — voice trigger comes once Workstream A's router covers it.
+/// Feature 5's screen. "Hey Dojo, check this ad" (via `VoiceCommandRouter`)
+/// and the button below drive the same shared view model.
 struct AdScamCheckView: View {
-    @StateObject private var viewModel: AdScamCheckViewModel
-
-    init(glasses: GlassesSession) {
-        _viewModel = StateObject(wrappedValue: AdScamCheckViewModel(glasses: glasses))
-    }
+    @ObservedObject var viewModel: AdScamCheckViewModel
 
     var body: some View {
         VStack(spacing: 20) {

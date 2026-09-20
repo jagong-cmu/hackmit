@@ -12,6 +12,13 @@ protocol GlassesSession {
 
     /// Starts streaming mic audio and calling `onTranscript` with
     /// recognized speech. Used by the wake-word/keyword pipeline.
+    ///
+    /// Transcripts are *cumulative partials*: each call carries everything
+    /// recognized so far in the current segment, refined as more audio
+    /// arrives. An **empty string** marks the start of a new segment — the
+    /// recognizer was restarted and later transcripts no longer include
+    /// earlier speech. Consumers that track what they've already acted on
+    /// (`VoiceTranscriptGate`) reset on it.
     func startListening(onTranscript: @escaping (String) -> Void)
 
     func stopListening()

@@ -1,66 +1,81 @@
 import SwiftUI
 
-/// Features 1–2 (voice scheduling/reminders + daily briefing). Unlike
-/// Vision's manual-button screens, the real trigger here is the wake word
-/// itself — "Hey Dojo" — so this screen is mostly a status display. The
-/// text field below is a Simulator/demo stand-in for actually saying it
-/// out loud (`SchedulingCoordinator.handle` is explicitly designed for
-/// this — see its doc comment).
+/// Features 1–2 (voice scheduling/reminders + daily briefing), and the app's
+/// voice console. The real trigger for everything is the wake word — "Hey
+/// Dojo" — so this screen shows what the mic pipeline is doing and offers a
+/// typed stand-in for saying it out loud. The text field runs the *same*
+/// `VoiceCommandRouter.handle` path a spoken command does, for any feature:
+/// "remind me to take my pills at 8", "scan this", "call my daughter".
 struct SchedulingView: View {
-    @StateObject private var viewModel: SchedulingViewModel
-    private let realGlasses: DATGlassesSession?
+    @ObservedObject var router: VoiceCommandRouter
+    let datSession: DATGlassesSession?
 
-    init(glasses: GlassesSession, calendar: CalendarService, backendBaseURL: URL) {
-        _viewModel = StateObject(
-            wrappedValue: SchedulingViewModel(glasses: glasses, calendar: calendar, backendBaseURL: backendBaseURL)
-        )
-        realGlasses = glasses as? DATGlassesSession
-    }
+    @State private var draftCommand = ""
 
     var body: some View {
         VStack(spacing: 20) {
-            if let realGlasses {
-                // On hardware, show what the mic pipeline is actually doing —
-                // the view model's own flag only says we *asked* it to listen.
-                ListenerStatus(session: realGlasses)
-            } else {
-                Label(
-                    viewModel.isListening ? "Listening for “Hey Dojo”" : "Not listening",
-                    systemImage: viewModel.isListening ? "mic.fill" : "mic.slash"
-                )
-                .font(.headline)
-                .foregroundStyle(viewModel.isListening ? .green : .secondary)
+            // On hardware, show what the mic pipeline is actually doing — the
+            // live transcript and any recognizer error. (The router's own flag,
+            // in the status bar above, only says we *asked* it to listen.)
+            if let datSession {
+                ListenerStatus(session: datSession)
             }
 
-            if let response = viewModel.lastResponse {
+            if let response = router.lastResponse {
                 Text(response)
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Things you can say after “\(WakeWordDetector.phrase)”")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(Self.examples, id: \.self) { example in
+                    Text("• \(example)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             Spacer()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(realGlasses == nil
+                Text(datSession == nil
                      ? "No mic on Simulator — type what you'd say instead:"
                      : "Or type a command to test without speaking:")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
-                    TextField("remind me to take my pills at 8", text: $viewModel.draftCommand)
+                    TextField("remind me to take my pills at 8", text: $draftCommand)
                         .textFieldStyle(.roundedBorder)
-                    Button("Try it") {
-                        Task { await viewModel.tryCommand() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.draftCommand.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .submitLabel(.send)
+                        .onSubmit(send)
+                    Button("Try it", action: send)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(draftCommand.trimmingCharacters(in: .whitespaces).isEmpty || router.isBusy)
                 }
             }
         }
         .padding()
-        .onAppear { viewModel.start() }
-        .onDisappear { viewModel.stop() }
+    }
+
+    private static let examples = [
+        "remind me to take my pills at 8",
+        "what do I have today",
+        "scan this",
+        "read this to me",
+        "check this ad",
+        "call my daughter  /  call 911",
+    ]
+
+    private func send() {
+        let command = draftCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else { return }
+        draftCommand = ""
+        Task { await router.handle(command) }
     }
 }
 
@@ -70,7 +85,7 @@ private struct ListenerStatus: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(
-                session.isListening ? "Listening for “Hey Dojo”" : "Not listening",
+                session.isListening ? "Listening for “\(WakeWordDetector.phrase)”" : "Not listening",
                 systemImage: session.isListening ? "mic.fill" : "mic.slash"
             )
             .font(.headline)

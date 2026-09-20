@@ -11,12 +11,11 @@ import PhotosUI
 ///    hand it a sample appointment-card / document photo, standing in
 ///    for what the glasses camera would have captured.
 ///  - `startListening` / `stopListening` store the transcript callback and
-///    expose `simulateTranscript(_:)` so Workstream A's wake-word pipeline
-///    (`SchedulingCoordinator`, "Hey Dojo") is exercisable on Simulator —
-///    call it from a debug UI or a test in place of real mic input.
-///    Vision's own features (`AppointmentCardScanView` / `ReadToMeView`)
-///    still use an explicit on-screen button rather than the wake word.
-///    Swap this session out for the real DAT-backed one once that lands.
+///    expose `simulateTranscript(_:)` so the wake-word pipeline
+///    (`VoiceCommandRouter`, "Hey Dojo") is exercisable on Simulator —
+///    call it from a test in place of real mic input. The Schedule tab's
+///    "type a command" field is the interactive equivalent and reaches
+///    every feature (scan / read / check ad / call), not just scheduling.
 @MainActor
 final class MockGlassesSession: NSObject, GlassesSession {
     private let synthesizer = AVSpeechSynthesizer()

@@ -44,13 +44,43 @@ final class EmergencyContactSetupViewModel: ObservableObject {
         persist()
     }
 
-    /// Manual trigger for this scaffold — see `EmergencyCallService` for
-    /// why the real dedicated-phrase trigger isn't wired up yet.
-    func callNow(_ contact: EmergencyContact) {
+    /// The contact the wearer meant by "call my daughter". Matches on the
+    /// configured relation word, ignoring case and the odd plural ("daughters")
+    /// — anything looser risks dialing the wrong person in an emergency.
+    func contact(matching spoken: String) -> EmergencyContact? {
+        let wanted = WakeWordDetector.tokenize(spoken)
+        guard !wanted.isEmpty else { return nil }
+
+        func matches(_ contact: EmergencyContact) -> Int? {
+            let relation = WakeWordDetector.tokenize(contact.relation)
+            guard !relation.isEmpty else { return nil }
+            // "daughter" matches "daughter" and "daughters"; a multi-word
+            // relation ("my son in law" → "son in law") must appear in order.
+            if relation.count == 1 {
+                let word = relation[0]
+                return wanted.contains { $0 == word || $0 == word + "s" } ? 1 : nil
+            }
+            return wanted.joined(separator: " ").contains(relation.joined(separator: " ")) ? relation.count : nil
+        }
+
+        // Most specific relation wins: "call my son in law" must not dial
+        // "son" just because that contact was added first.
+        return contacts
+            .compactMap { contact in matches(contact).map { (contact, $0) } }
+            .max { $0.1 < $1.1 }?.0
+    }
+
+    /// Places the call from either trigger — "Hey Dojo, call my daughter"
+    /// (via `VoiceCommandRouter`) or the on-screen button. Returns false if
+    /// iOS refused to open the dialer (Simulator, or a malformed number), so
+    /// the caller can say so instead of claiming a call is on its way.
+    @discardableResult
+    func callNow(_ contact: EmergencyContact) -> Bool {
         EmergencyCallService.call(contact.phoneNumber)
     }
 
-    func call911() {
+    @discardableResult
+    func call911() -> Bool {
         EmergencyCallService.call(EmergencyCallService.emergencyNumber)
     }
 

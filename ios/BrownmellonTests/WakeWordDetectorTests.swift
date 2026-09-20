@@ -44,6 +44,14 @@ final class WakeWordDetectorTests: XCTestCase {
         XCTAssertEqual(command("hey dojo"), "")
     }
 
+    /// A streaming transcript keeps every command of the segment. The one the
+    /// wearer just said is the last one.
+    func testDetectLatestPicksTheLastWakeWord() {
+        let tokens = WakeWordDetector.tokenize("hey dojo scan this hey dojo read this to me")
+        XCTAssertEqual(detector.detect(tokens: tokens)?.command, "scan this hey dojo read this to me")
+        XCTAssertEqual(detector.detectLatest(tokens: tokens)?.command, "read this to me")
+    }
+
     // MARK: - Debounce
 
     /// Streaming recognizers resend the same utterance as it grows. Without the

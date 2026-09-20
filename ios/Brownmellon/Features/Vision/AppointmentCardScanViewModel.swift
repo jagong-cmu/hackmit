@@ -29,9 +29,13 @@ final class AppointmentCardScanViewModel: ObservableObject {
         self.backend = backend
     }
 
-    /// Called when the wearer triggers this feature — a button tap in
-    /// the mock UI today; will be called by Workstream A's keyword
-    /// router once "Hey Brownmellon, scan this" is wired up for real.
+    var isAwaitingConfirmation: Bool {
+        if case .awaitingConfirmation = state { return true }
+        return false
+    }
+
+    /// Entry point for both triggers: "Hey Dojo, scan this" (via
+    /// `VoiceCommandRouter`) and the on-screen button.
     func scan() async {
         state = .capturing
         do {
@@ -52,6 +56,9 @@ final class AppointmentCardScanViewModel: ObservableObject {
             state = .awaitingConfirmation(title: title, start: start, location: result.location)
 
             let dateDescription = DateFormatter.localizedString(from: start, dateStyle: .full, timeStyle: .short)
+            // This question leaks into the mic right before we listen for the
+            // answer. It must not end in a yes/no word ("…yes or no?") or it
+            // could answer itself — see VoiceTranscriptGate.
             await glasses.speak("I found: \(title), \(dateDescription). Should I add it to your calendar?")
         } catch {
             state = .failed(String(describing: error))
@@ -59,7 +66,8 @@ final class AppointmentCardScanViewModel: ObservableObject {
         }
     }
 
-    /// Call after the wearer gives an affirmative spoken response.
+    /// Call after the wearer gives an affirmative response — spoken ("yes",
+    /// routed here by `VoiceCommandRouter`) or the on-screen button.
     /// Never call this on a guess — no confirmation, no write (PRD design principle).
     func confirm() async {
         guard case .awaitingConfirmation(let title, let start, let location) = state,
@@ -80,6 +88,14 @@ final class AppointmentCardScanViewModel: ObservableObject {
         pendingResult = nil
         state = .idle
         await glasses.speak("Okay, I won't add it.")
+    }
+
+    /// Drop a pending confirmation without saying anything — the wearer moved
+    /// on to a different command, and the next feature is about to speak.
+    func cancel() {
+        guard isAwaitingConfirmation else { return }
+        pendingResult = nil
+        state = .idle
     }
 
     /// A paper card has no timezone, so the backend returns local wall-clock

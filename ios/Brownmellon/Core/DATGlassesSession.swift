@@ -98,6 +98,7 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private var onTranscript: ((String) -> Void)?
+    private var audioObservers: [NSObjectProtocol] = []
 
     override init() {
         let wearables = Wearables.shared
@@ -120,6 +121,47 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
             }
         }
         trackDevices(wearables.devices)
+        observeAudioInterruptions()
+    }
+
+    /// The listener has to outlive whatever iOS does to the audio session: a
+    /// phone call (which "Hey Dojo, call my daughter" itself causes) interrupts
+    /// it, and the glasses connecting or disconnecting changes the engine's
+    /// input format. Either silently stops the engine; without this the wake
+    /// word would be dead until the app relaunched.
+    private func observeAudioInterruptions() {
+        let center = NotificationCenter.default
+        audioObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.isListening else { return }
+                switch type {
+                case .began:
+                    self.tearDownRecognition(deactivateSession: false)
+                case .ended:
+                    await self.restartRecognition()
+                @unknown default:
+                    break
+                }
+            }
+        })
+        audioObservers.append(center.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.isListening else { return }
+                await self.restartRecognition()
+            }
+        })
+    }
+
+    private func restartRecognition() async {
+        tearDownRecognition(deactivateSession: false)
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        await beginRecognition()
     }
 
     /// Mirrors each device's link state + compatibility into `deviceStatuses`,
@@ -269,6 +311,10 @@ final class DATGlassesSession: NSObject, GlassesSession, ObservableObject {
         }
 
         Self.configureAudioSession()
+
+        // New recognizer segment: tell the consumer that earlier speech is
+        // gone from the transcript (see the GlassesSession protocol doc).
+        onTranscript?("")
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true

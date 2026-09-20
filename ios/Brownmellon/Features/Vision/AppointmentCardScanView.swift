@@ -1,14 +1,11 @@
 import SwiftUI
 
-/// Manual-trigger scaffold UI for Feature 3. The real trigger is voice
-/// ("Hey Brownmellon, scan this") via Workstream A's keyword router —
-/// this button stands in for that until the two workstreams merge.
+/// Feature 3's screen. "Hey Dojo, scan this" (via `VoiceCommandRouter`) and
+/// the button below drive the same shared view model, so a spoken command
+/// shows up here as it runs; "yes"/"no" and the two buttons are likewise
+/// the same confirm/decline.
 struct AppointmentCardScanView: View {
-    @StateObject private var viewModel: AppointmentCardScanViewModel
-
-    init(glasses: GlassesSession, calendar: CalendarService) {
-        _viewModel = StateObject(wrappedValue: AppointmentCardScanViewModel(glasses: glasses, calendar: calendar))
-    }
+    @ObservedObject var viewModel: AppointmentCardScanViewModel
 
     var body: some View {
         VStack(spacing: 20) {
@@ -34,6 +31,9 @@ struct AppointmentCardScanView: View {
                     if let location {
                         Text(location).foregroundStyle(.secondary)
                     }
+                    Text("Say “yes” or “no”, or tap:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     HStack {
                         Button("Add to calendar") { Task { await viewModel.confirm() } }
                             .buttonStyle(.borderedProminent)

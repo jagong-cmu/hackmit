@@ -1,76 +1,71 @@
 import SwiftUI
-import MWDATCore
 
 @main
 struct BrownmellonApp: App {
-    // GlassesSession: real Ray-Ban Meta (DAT + Bluetooth audio) on a physical
-    // phone, photo-picker/TTS mock on Simulator where there's no Bluetooth.
-    // CalendarService / SecureLocalStore are still mocks — swap for
-    // GoogleCalendarService (needs an OAuth client ID, PRD § Deployment) and
-    // KeychainSecureLocalStore when ready.
-    // Plain properties, not @StateObject: these are session/service
-    // objects, not view state — the ViewModels are the ObservableObjects.
-    private let glasses: GlassesSession
-    private let datSession: DATGlassesSession?
-    private let calendarService = MockCalendarService()
-    private let secureStore = MockSecureLocalStore()
-
-    init() {
-        #if targetEnvironment(simulator)
-        glasses = MockGlassesSession()
-        datSession = nil
-        #else
-        do {
-            try Wearables.configure()
-        } catch {
-            assertionFailure("Wearables SDK failed to configure: \(error)")
-        }
-        let session = DATGlassesSession()
-        glasses = session
-        datSession = session
-        #endif
-    }
-
-    private var backendBaseURL: URL {
-        if let override = Bundle.main.object(forInfoDictionaryKey: "BROWNMELLON_BACKEND_URL") as? String,
-           let url = URL(string: override) {
-            return url
-        }
-        return URL(string: "http://localhost:3000")!
-    }
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                if let datSession {
+            RootView(model: model)
+        }
+    }
+}
+
+/// Tabs plus the always-visible voice status bar. The tab selection is bound
+/// to the router so "Hey Dojo, scan this" brings the Scan Card screen forward
+/// while the photo is taken — the wearer's companion can see what's happening.
+private struct RootView: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var router: VoiceCommandRouter
+
+    init(model: AppModel) {
+        self.model = model
+        self.router = model.router
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VoiceStatusBar(router: router)
+            Divider()
+
+            TabView(selection: $router.activeTab) {
+                if let datSession = model.datSession {
                     NavigationStack {
                         GlassesView(session: datSession)
                     }
                     .tabItem { Label("Glasses", systemImage: "eyeglasses") }
+                    .tag(AppTab.glasses)
                 }
 
-                SchedulingView(glasses: glasses, calendar: calendarService, backendBaseURL: backendBaseURL)
+                SchedulingView(router: router, datSession: model.datSession)
                     .tabItem { Label("Schedule", systemImage: "calendar") }
+                    .tag(AppTab.schedule)
 
-                AppointmentCardScanView(glasses: glasses, calendar: calendarService)
+                AppointmentCardScanView(viewModel: model.scanCard)
                     .tabItem { Label("Scan Card", systemImage: "doc.text.viewfinder") }
+                    .tag(AppTab.scanCard)
 
-                ReadToMeView(glasses: glasses)
+                ReadToMeView(viewModel: model.readToMe)
                     .tabItem { Label("Read To Me", systemImage: "text.viewfinder") }
+                    .tag(AppTab.readToMe)
 
-                AdScamCheckView(glasses: glasses)
+                AdScamCheckView(viewModel: model.adCheck)
                     .tabItem { Label("Check Ad", systemImage: "exclamationmark.shield") }
+                    .tag(AppTab.checkAd)
 
                 NavigationStack {
-                    EmergencyContactSetupView(store: secureStore)
+                    EmergencyContactSetupView(viewModel: model.emergency)
                 }
                 .tabItem { Label("Setup", systemImage: "person.crop.circle.badge.exclamationmark") }
+                .tag(AppTab.setup)
             }
-            // Meta AI hands registration / permission results back through the
-            // brownmellon:// scheme declared in project.yml.
-            .onOpenURL { url in
-                Task { await DATGlassesSession.handle(url: url) }
-            }
+        }
+        // The mic opens once, for the life of the app — not per tab.
+        .onAppear { router.startListening() }
+        // Meta AI hands registration / permission results back through the
+        // brownmellon:// scheme declared in project.yml.
+        .onOpenURL { url in
+            Task { await DATGlassesSession.handle(url: url) }
         }
     }
 }

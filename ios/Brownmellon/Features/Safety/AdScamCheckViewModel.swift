@@ -28,9 +28,8 @@ final class AdScamCheckViewModel: ObservableObject {
         self.backend = backend
     }
 
-    /// Called on trigger — a button tap in this scaffold; wire to "Hey
-    /// Dojo, check this ad" once Workstream A's wake-word router is
-    /// extended to route non-scheduling commands here.
+    /// Entry point for both triggers: "Hey Dojo, check this ad" (via
+    /// `VoiceCommandRouter`) and the on-screen button.
     func checkAd() async {
         state = .capturing
         do {

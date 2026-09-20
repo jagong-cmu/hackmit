@@ -39,22 +39,45 @@ struct WakeWordDetector {
     }
 
     func detect(in transcript: String) -> Match? {
-        let tokens = Self.normalize(transcript).split(separator: " ").map(String.init)
+        detect(tokens: Self.tokenize(transcript))
+    }
+
+    /// First occurrence of the wake word. Right for a one-shot transcript.
+    func detect(tokens: [String]) -> Match? {
         guard tokens.count >= 2 else { return nil }
-
-        for (index, token) in tokens.enumerated() where Self.greetings.contains(token) {
-            let rest = Array(tokens.dropFirst(index + 1))
-            guard let next = rest.first else { continue }
-
-            if Self.matchesName(next) {
-                return Match(command: rest.dropFirst().joined(separator: " "))
-            }
-
-            if rest.count >= 2, Self.acceptedPairs.contains("\(next) \(rest[1])") {
-                return Match(command: rest.dropFirst(2).joined(separator: " "))
-            }
+        for index in tokens.indices {
+            if let match = Self.match(tokens, greetingAt: index) { return match }
         }
         return nil
+    }
+
+    /// *Last* occurrence of the wake word. A streaming recognizer keeps the whole
+    /// segment in one growing transcript — "hey dojo scan this … hey dojo read
+    /// this" — and the command that matters is the one the wearer just said.
+    func detectLatest(tokens: [String]) -> Match? {
+        guard tokens.count >= 2 else { return nil }
+        for index in tokens.indices.reversed() {
+            if let match = Self.match(tokens, greetingAt: index) { return match }
+        }
+        return nil
+    }
+
+    private static func match(_ tokens: [String], greetingAt index: Int) -> Match? {
+        guard greetings.contains(tokens[index]) else { return nil }
+        let rest = Array(tokens.dropFirst(index + 1))
+        guard let next = rest.first else { return nil }
+
+        if matchesName(next) {
+            return Match(command: rest.dropFirst().joined(separator: " "))
+        }
+        if rest.count >= 2, acceptedPairs.contains("\(next) \(rest[1])") {
+            return Match(command: rest.dropFirst(2).joined(separator: " "))
+        }
+        return nil
+    }
+
+    static func tokenize(_ text: String) -> [String] {
+        normalize(text).split(separator: " ").map(String.init)
     }
 
     private static func matchesName(_ token: String) -> Bool {

@@ -26,6 +26,8 @@ final class ReadToMeViewModel: ObservableObject {
         self.backend = backend
     }
 
+    /// Entry point for both triggers: "Hey Dojo, read this to me" (via
+    /// `VoiceCommandRouter`) and the on-screen button.
     func readThisToMe() async {
         state = .capturing
         do {

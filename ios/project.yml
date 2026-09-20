@@ -53,7 +53,9 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLName: $(PRODUCT_BUNDLE_IDENTIFIER)
             CFBundleURLSchemes: [brownmellon]
-        LSApplicationQueriesSchemes: [fb-viewapp]
+        # `tel` is required for canOpenURL("tel:") to return true (iOS 9+);
+        # without it EmergencyCallService never places a call, on hardware too.
+        LSApplicationQueriesSchemes: [fb-viewapp, tel]
         UISupportedExternalAccessoryProtocols: [com.meta.ar.wearable]
         # `audio` keeps the "Hey Dojo" mic listener alive when the phone is in
         # a pocket — PRD § Deployment lists this as the open risk to test first.

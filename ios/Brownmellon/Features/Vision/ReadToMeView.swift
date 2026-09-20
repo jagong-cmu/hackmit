@@ -1,13 +1,9 @@
 import SwiftUI
 
-/// Manual-trigger scaffold UI for Feature 4. Same caveat as
-/// AppointmentCardScanView — voice trigger comes from Workstream A later.
+/// Feature 4's screen. "Hey Dojo, read this to me" (via `VoiceCommandRouter`)
+/// and the button below drive the same shared view model.
 struct ReadToMeView: View {
-    @StateObject private var viewModel: ReadToMeViewModel
-
-    init(glasses: GlassesSession) {
-        _viewModel = StateObject(wrappedValue: ReadToMeViewModel(glasses: glasses))
-    }
+    @ObservedObject var viewModel: ReadToMeViewModel
 
     var body: some View {
         VStack(spacing: 20) {

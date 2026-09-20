@@ -10,13 +10,12 @@ import UIKit
 /// screen; it cannot and must not claim to finish the call itself — the
 /// glasses' spoken confirmation should say so explicitly (see PRD § Feature 6).
 ///
-/// Not yet implemented: the PRD calls for a single dedicated trigger
+/// Voice trigger today: "Hey Dojo, call my daughter" / "call 911", routed by
+/// `VoiceCommandRouter` through the general wake-word pipeline and classified
+/// on-device (never behind a network call). Still open: the PRD's *dedicated*
 /// phrase with "its own always-on listener, bypassing the general NLU
-/// pipeline entirely." That's a separate, always-listening speech
-/// recognizer independent of `WakeWordListener` — real device/DAT work,
-/// not something to fake convincingly on Simulator. This scaffold exposes
-/// the call-placement half only; wire a dedicated listener to
-/// `EmergencyContactSetupViewModel.callNow(_:)` once that infrastructure exists.
+/// pipeline entirely" — a second recognizer independent of the wake word,
+/// which is real device work and not implemented yet.
 enum EmergencyCallService {
     static let emergencyNumber = "911"
 

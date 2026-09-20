@@ -1,17 +1,15 @@
 import SwiftUI
 
 /// Caregiver-facing screen — configure who "daughter", "son", etc. call,
-/// and place a call directly for testing (PRD § Feature 6).
+/// and place a call directly for testing (PRD § Feature 6). The relation
+/// word entered here is exactly what the wearer says: "Hey Dojo, call my
+/// daughter" (via `VoiceCommandRouter`) dials the same number as the button.
 struct EmergencyContactSetupView: View {
-    @StateObject private var viewModel: EmergencyContactSetupViewModel
-
-    init(store: SecureLocalStore) {
-        _viewModel = StateObject(wrappedValue: EmergencyContactSetupViewModel(store: store))
-    }
+    @ObservedObject var viewModel: EmergencyContactSetupViewModel
 
     var body: some View {
         Form {
-            Section("Add a contact") {
+            Section {
                 TextField("Relation (e.g. daughter)", text: $viewModel.draftRelation)
                 TextField("Phone number", text: $viewModel.draftPhoneNumber)
                     .keyboardType(.phonePad)
@@ -20,6 +18,10 @@ struct EmergencyContactSetupView: View {
                         viewModel.draftRelation.trimmingCharacters(in: .whitespaces).isEmpty
                             || viewModel.draftPhoneNumber.trimmingCharacters(in: .whitespaces).isEmpty
                     )
+            } header: {
+                Text("Add a contact")
+            } footer: {
+                Text("The wearer says “\(WakeWordDetector.phrase), call my daughter” to reach whoever is saved as “daughter”. “\(WakeWordDetector.phrase), call 911” always works. iOS asks for one tap on the phone before any call connects.")
             }
 
             Section("Configured contacts") {

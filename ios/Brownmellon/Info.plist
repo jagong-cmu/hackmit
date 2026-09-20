@@ -36,6 +36,7 @@
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>fb-viewapp</string>
+		<string>tel</string>
 	</array>
 	<key>MWDAT</key>
 	<dict>

@@ -1,65 +1,58 @@
 import Foundation
 
-/// Features 1 and 2 end to end: listen for "Hey Dojo", parse what follows,
-/// act on the calendar, speak the result back through the glasses.
+/// Features 1 and 2: parse a spoken calendar request, act on the calendar,
+/// speak the result back through the glasses.
 ///
-/// Feature 2 (daily briefing) deliberately reuses feature 1's trigger and
-/// parsing path — it is another intent, not another listener.
+/// The mic and wake word live in `VoiceCommandRouter`, which hands every
+/// "Hey Dojo …" to one feature; this is the feature that handles anything the
+/// backend parsed as a calendar intent. Feature 2 (daily briefing) reuses the
+/// same parsing path — it is another intent, not another listener.
 @MainActor
 final class SchedulingCoordinator {
     private let glasses: GlassesSession
     private let calendar: CalendarService
     private let intents: IntentClient
-    private let listener: WakeWordListener
 
-    init(
-        glasses: GlassesSession,
-        calendar: CalendarService,
-        intents: IntentClient,
-        listener: WakeWordListener = WakeWordListener()
-    ) {
+    init(glasses: GlassesSession, calendar: CalendarService, intents: IntentClient) {
         self.glasses = glasses
         self.calendar = calendar
         self.intents = intents
-        self.listener = listener
     }
 
-    func start() {
-        glasses.startListening { [weak self] transcript in
-            // The recognizer callback has no thread guarantees; hop to the main
-            // actor before touching the listener's debounce state.
-            Task { @MainActor [weak self] in
-                guard let self, let command = self.listener.consume(transcript) else { return }
-                await self.handle(command)
-            }
-        }
-    }
-
-    func stop() {
-        glasses.stopListening()
-    }
-
-    /// Exposed for tests and for a Setup-Mode "try it" button.
+    /// Parse and perform in one step. The router uses `perform` directly
+    /// (it parses once and dispatches across features); this is for tests.
     func handle(_ command: String) async {
         do {
-            switch try await intents.parse(command: command) {
-            case let .createEvent(title, start, end):
-                try await calendar.createEvent(title: title, start: start, end: end, location: nil)
-                await glasses.speak("Okay. \(title), \(Self.spokenDateTime(start)).")
-
-            case .dailyBriefing:
-                await speakBriefing()
-
-            case let .unknown(reason):
-                let detail = reason.isEmpty ? "" : " \(reason)"
-                await glasses.speak("Sorry, I didn't catch that.\(detail)")
-            }
+            await perform(try await intents.parse(command: command))
         } catch {
             await glasses.speak("Sorry, something went wrong. Please try again.")
         }
+    }
 
-        // Our own speech leaks into the mic; don't let it eat the next command.
-        listener.reset()
+    /// Acts on an already-parsed intent. Only calendar intents belong here —
+    /// the router sends the camera and call intents to their own features.
+    func perform(_ intent: VoiceIntent) async {
+        switch intent {
+        case let .createEvent(title, start, end):
+            do {
+                try await calendar.createEvent(title: title, start: start, end: end, location: nil)
+                await glasses.speak("Okay. \(title), \(Self.spokenDateTime(start)).")
+            } catch {
+                await glasses.speak("Sorry, I couldn't save that to your calendar. Please try again.")
+            }
+
+        case .dailyBriefing:
+            await speakBriefing()
+
+        case let .unknown(reason):
+            let detail = reason.isEmpty ? "" : " \(reason)"
+            await glasses.speak("Sorry, I didn't catch that.\(detail)")
+
+        case .scanCard, .readText, .checkAd, .callEmergency, .callContact:
+            // Routed elsewhere by VoiceCommandRouter; reaching this means a
+            // caller bypassed it. Say something rather than silently dropping it.
+            await glasses.speak("Sorry, I didn't catch that.")
+        }
     }
 
     private func speakBriefing() async {

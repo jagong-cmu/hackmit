@@ -4,7 +4,18 @@ import Foundation
 enum VoiceIntent: Equatable {
     case createEvent(title: String, start: Date, end: Date?)
     case dailyBriefing
-    /// Not a calendar request, or too ambiguous to act on. `reason` is written
+    /// Features 3–6. The phone classifies the common phrasings for these
+    /// itself (`VoiceCommandClassifier`) before ever calling the backend; the
+    /// model returns them for paraphrases that list misses ("what does this
+    /// letter say", "is this offer for real").
+    case scanCard
+    case readText
+    case checkAd
+    case callEmergency
+    /// `contact` is whoever the wearer named ("daughter"), for the phone to
+    /// match against its configured emergency contacts.
+    case callContact(String)
+    /// Not something we can act on, or too ambiguous. `reason` is written
     /// to be spoken aloud.
     case unknown(reason: String)
 }
@@ -66,6 +77,24 @@ struct IntentClient {
         case "daily_briefing":
             return .dailyBriefing
 
+        case "scan_card":
+            return .scanCard
+
+        case "read_text":
+            return .readText
+
+        case "check_ad":
+            return .checkAd
+
+        case "call_emergency":
+            return .callEmergency
+
+        case "call_contact":
+            guard let contact = decoded.contact?.trimmingCharacters(in: .whitespacesAndNewlines), !contact.isEmpty else {
+                throw IntentClientError.malformedResponse("call_contact missing contact")
+            }
+            return .callContact(contact.lowercased())
+
         case "unknown":
             return .unknown(reason: decoded.reason ?? "")
 
@@ -85,6 +114,7 @@ struct IntentClient {
         let title: String?
         let start: String?
         let end: String?
+        let contact: String?
         let reason: String?
     }
 }
